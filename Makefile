@@ -406,6 +406,9 @@ endif
 
 ifeq (${NEED_BL32},yes)
 $(eval $(call MAKE_BL,32,in_fip))
+else
+FIP_ARGS += $(if $(BL32),--bl32 $(BL32))
+FIP_DEPS += $(BL32)
 endif
 
 ${BUILD_PLAT}/fip.bin:	${FIP_DEPS} ${BL33} ${FIPTOOL}

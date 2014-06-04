@@ -34,172 +34,183 @@
 #include <context_mgmt.h>
 #include <debug.h>
 #include <platform.h>
-#include <tsp.h>
+#include <optee.h>
 #include "opteed_private.h"
 
 /*******************************************************************************
- * The target cpu is being turned on. Allow the TSPD/TSP to perform any actions
- * needed. Nothing at the moment.
+ * The target cpu is being turned on. Allow the OPTEED/OPTEE to perform any
+ * actions needed. Nothing at the moment.
  ******************************************************************************/
-static void tspd_cpu_on_handler(uint64_t target_cpu)
+static void opteed_cpu_on_handler(uint64_t target_cpu)
 {
 }
 
 /*******************************************************************************
- * This cpu is being turned off. Allow the TSPD/TSP to perform any actions
+ * This cpu is being turned off. Allow the OPTEED/OPTEE to perform any actions
  * needed
  ******************************************************************************/
-static int32_t tspd_cpu_off_handler(uint64_t cookie)
+static int32_t opteed_cpu_off_handler(uint64_t cookie)
 {
 	int32_t rc = 0;
 	uint64_t mpidr = read_mpidr();
 	uint32_t linear_id = platform_get_core_pos(mpidr);
-	tsp_context_t *tsp_ctx = &tspd_sp_context[linear_id];
+	optee_context_t *optee_ctx = &opteed_sp_context[linear_id];
 
-	assert(tsp_vectors);
-	assert(get_tsp_pstate(tsp_ctx->state) == TSP_PSTATE_ON);
+	assert(optee_vectors);
+	assert(get_optee_pstate(optee_ctx->state) == OPTEE_PSTATE_ON);
 
-	/* Program the entry point and enter the TSP */
-	cm_set_elr_el3(SECURE, (uint64_t) &tsp_vectors->cpu_off_entry);
-	rc = tspd_synchronous_sp_entry(tsp_ctx);
+	/* Set entry reason to find our way back below */
+	set_optee_entry_reason(optee_ctx->state, OPTEE_ENTRY_REASON_OFF);
+
+	/* Program the entry point and enter OPTEE */
+	cm_set_elr_el3(SECURE, (uint64_t) &optee_vectors->cpu_off_entry);
+	rc = opteed_synchronous_sp_entry(optee_ctx);
 
 	/*
-	 * Read the response from the TSP. A non-zero return means that
-	 * something went wrong while communicating with the TSP.
+	 * Read the response from OPTEE. A non-zero return means that
+	 * something went wrong while communicating with OPTEE.
 	 */
 	if (rc != 0)
 		panic();
 
 	/*
-	 * Reset TSP's context for a fresh start when this cpu is turned on
+	 * Reset OPTEE's context for a fresh start when this cpu is turned on
 	 * subsequently.
 	 */
-	set_tsp_pstate(tsp_ctx->state, TSP_PSTATE_OFF);
+	set_optee_pstate(optee_ctx->state, OPTEE_PSTATE_OFF);
 
 	 return 0;
 }
 
 /*******************************************************************************
  * This cpu is being suspended. S-EL1 state must have been saved in the
- * resident cpu (mpidr format) if it is a UP/UP migratable TSP.
+ * resident cpu (mpidr format) if it is a UP/UP migratable OPTEE.
  ******************************************************************************/
-static void tspd_cpu_suspend_handler(uint64_t power_state)
+static void opteed_cpu_suspend_handler(uint64_t power_state)
 {
 	int32_t rc = 0;
 	uint64_t mpidr = read_mpidr();
 	uint32_t linear_id = platform_get_core_pos(mpidr);
-	tsp_context_t *tsp_ctx = &tspd_sp_context[linear_id];
+	optee_context_t *optee_ctx = &opteed_sp_context[linear_id];
 
-	assert(tsp_vectors);
-	assert(get_tsp_pstate(tsp_ctx->state) == TSP_PSTATE_ON);
+	assert(optee_vectors);
+	assert(get_optee_pstate(optee_ctx->state) == OPTEE_PSTATE_ON);
 
-	/* Program the entry point, power_state parameter and enter the TSP */
-	write_ctx_reg(get_gpregs_ctx(&tsp_ctx->cpu_ctx),
+	/* Set entry reason to find our way back below */
+	set_optee_entry_reason(optee_ctx->state, OPTEE_ENTRY_REASON_SUSPEND);
+
+	/* Program the entry point, power_state parameter and enter OPTEE */
+	write_ctx_reg(get_gpregs_ctx(&optee_ctx->cpu_ctx),
 		      CTX_GPREG_X0,
 		      power_state);
-	cm_set_elr_el3(SECURE, (uint64_t) &tsp_vectors->cpu_suspend_entry);
-	rc = tspd_synchronous_sp_entry(tsp_ctx);
+	cm_set_elr_el3(SECURE, (uint64_t) &optee_vectors->cpu_suspend_entry);
+	rc = opteed_synchronous_sp_entry(optee_ctx);
 
 	/*
-	 * Read the response from the TSP. A non-zero return means that
-	 * something went wrong while communicating with the TSP.
+	 * Read the response from OPTEE. A non-zero return means that
+	 * something went wrong while communicating with OPTEE.
 	 */
 	if (rc != 0)
 		panic();
 
-	/* Update its context to reflect the state the TSP is in */
-	set_tsp_pstate(tsp_ctx->state, TSP_PSTATE_SUSPEND);
+	/* Update its context to reflect the state OPTEE is in */
+	set_optee_pstate(optee_ctx->state, OPTEE_PSTATE_SUSPEND);
 }
 
 /*******************************************************************************
- * This cpu has been turned on. Enter the TSP to initialise S-EL1 and other bits
+ * This cpu has been turned on. Enter OPTEE to initialise S-EL1 and other bits
  * before passing control back to the Secure Monitor. Entry in S-El1 is done
  * after initialising minimal architectural state that guarantees safe
  * execution.
  ******************************************************************************/
-static void tspd_cpu_on_finish_handler(uint64_t cookie)
+static void opteed_cpu_on_finish_handler(uint64_t cookie)
 {
 	int32_t rc = 0;
 	uint64_t mpidr = read_mpidr();
 	uint32_t linear_id = platform_get_core_pos(mpidr);
-	tsp_context_t *tsp_ctx = &tspd_sp_context[linear_id];
+	optee_context_t *optee_ctx = &opteed_sp_context[linear_id];
 
-	assert(tsp_vectors);
-	assert(get_tsp_pstate(tsp_ctx->state) == TSP_PSTATE_OFF);
+	assert(optee_vectors);
+	assert(get_optee_pstate(optee_ctx->state) == OPTEE_PSTATE_OFF);
+
+	/* Set entry reason to find our way back below */
+	set_optee_entry_reason(optee_ctx->state, OPTEE_ENTRY_REASON_ON);
 
 	/* Initialise this cpu's secure context */
-	tspd_init_secure_context((uint64_t) &tsp_vectors->cpu_on_entry,
-				TSP_AARCH64,
-				mpidr,
-				tsp_ctx);
+	opteed_init_secure_context((uint64_t)&optee_vectors->cpu_on_entry,
+				   opteed_rw, mpidr, optee_ctx);
 
-	/* Enter the TSP */
-	rc = tspd_synchronous_sp_entry(tsp_ctx);
+	/* Enter OPTEE */
+	rc = opteed_synchronous_sp_entry(optee_ctx);
 
 	/*
-	 * Read the response from the TSP. A non-zero return means that
-	 * something went wrong while communicating with the SP.
+	 * Read the response from OPTEE. A non-zero return means that
+	 * something went wrong while communicating with OPTEE.
 	 */
 	if (rc != 0)
 		panic();
 
-	/* Update its context to reflect the state the SP is in */
-	set_tsp_pstate(tsp_ctx->state, TSP_PSTATE_ON);
+	/* Update its context to reflect the state OPTEE is in */
+	set_optee_pstate(optee_ctx->state, OPTEE_PSTATE_ON);
 }
 
 /*******************************************************************************
- * This cpu has resumed from suspend. The SPD saved the TSP context when it
+ * This cpu has resumed from suspend. The OPTEED saved the OPTEE context when it
  * completed the preceding suspend call. Use that context to program an entry
- * into the TSP to allow it to do any remaining book keeping
+ * into OPTEE to allow it to do any remaining book keeping
  ******************************************************************************/
-static void tspd_cpu_suspend_finish_handler(uint64_t suspend_level)
+static void opteed_cpu_suspend_finish_handler(uint64_t suspend_level)
 {
 	int32_t rc = 0;
 	uint64_t mpidr = read_mpidr();
 	uint32_t linear_id = platform_get_core_pos(mpidr);
-	tsp_context_t *tsp_ctx = &tspd_sp_context[linear_id];
+	optee_context_t *optee_ctx = &opteed_sp_context[linear_id];
 
-	assert(tsp_vectors);
-	assert(get_tsp_pstate(tsp_ctx->state) == TSP_PSTATE_SUSPEND);
+	assert(optee_vectors);
+	assert(get_optee_pstate(optee_ctx->state) == OPTEE_PSTATE_SUSPEND);
+
+	/* Set entry reason to find our way back below */
+	set_optee_entry_reason(optee_ctx->state, OPTEE_ENTRY_REASON_RESUME);
 
 	/* Program the entry point, suspend_level and enter the SP */
-	write_ctx_reg(get_gpregs_ctx(&tsp_ctx->cpu_ctx),
+	write_ctx_reg(get_gpregs_ctx(&optee_ctx->cpu_ctx),
 		      CTX_GPREG_X0,
 		      suspend_level);
-	cm_set_elr_el3(SECURE, (uint64_t) &tsp_vectors->cpu_resume_entry);
-	rc = tspd_synchronous_sp_entry(tsp_ctx);
+	cm_set_elr_el3(SECURE, (uint64_t) &optee_vectors->cpu_resume_entry);
+	rc = opteed_synchronous_sp_entry(optee_ctx);
 
 	/*
-	 * Read the response from the TSP. A non-zero return means that
-	 * something went wrong while communicating with the TSP.
+	 * Read the response from OPTEE. A non-zero return means that
+	 * something went wrong while communicating with OPTEE.
 	 */
 	if (rc != 0)
 		panic();
 
-	/* Update its context to reflect the state the SP is in */
-	set_tsp_pstate(tsp_ctx->state, TSP_PSTATE_ON);
+	/* Update its context to reflect the state OPTEE is in */
+	set_optee_pstate(optee_ctx->state, OPTEE_PSTATE_ON);
 }
 
 /*******************************************************************************
- * Return the type of TSP the TSPD is dealing with. Report the current resident
- * cpu (mpidr format) if it is a UP/UP migratable TSP.
+ * Return the type of OPTEE the OPTEED is dealing with. Report the current
+ * resident cpu (mpidr format) if it is a UP/UP migratable OPTEE.
  ******************************************************************************/
-static int32_t tspd_cpu_migrate_info(uint64_t *resident_cpu)
+static int32_t opteed_cpu_migrate_info(uint64_t *resident_cpu)
 {
-	return TSP_MIGRATE_INFO;
+	return OPTEE_MIGRATE_INFO;
 }
 
 /*******************************************************************************
- * Structure populated by the TSP Dispatcher to be given a chance to perform any
- * TSP bookkeeping before PSCI executes a power mgmt.  operation.
+ * Structure populated by the OPTEE Dispatcher to be given a chance to
+ * perform any OPTEE bookkeeping before PSCI executes a power mgmt.
+ * operation.
  ******************************************************************************/
-const spd_pm_ops_t tspd_pm = {
-	tspd_cpu_on_handler,
-	tspd_cpu_off_handler,
-	tspd_cpu_suspend_handler,
-	tspd_cpu_on_finish_handler,
-	tspd_cpu_suspend_finish_handler,
+const spd_pm_ops_t opteed_pm = {
+	opteed_cpu_on_handler,
+	opteed_cpu_off_handler,
+	opteed_cpu_suspend_handler,
+	opteed_cpu_on_finish_handler,
+	opteed_cpu_suspend_finish_handler,
 	NULL,
-	tspd_cpu_migrate_info
+	opteed_cpu_migrate_info
 };
 

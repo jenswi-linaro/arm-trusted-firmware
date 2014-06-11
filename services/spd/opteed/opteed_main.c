@@ -193,7 +193,9 @@ static int32_t opteed_init(void)
 	 * Arrange for an entry into the test secure payload. We expect an array
 	 * of vectors in return
 	 */
+	printf("Init OP-TEE\n");
 	rc = opteed_synchronous_sp_entry(optee_ctx);
+	printf("Init return\n");
 	assert(rc != 0);
 	if (rc) {
 		set_optee_pstate(optee_ctx->state, OPTEE_PSTATE_ON);
@@ -303,7 +305,6 @@ uint64_t opteed_smc_handler(uint32_t smc_fid,
 	/*
 	 * Returning from OPTEE
 	 */
-
 
 	switch (get_optee_entry_reason(optee_ctx->state)) {
 	/*

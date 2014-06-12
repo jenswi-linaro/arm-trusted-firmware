@@ -57,32 +57,6 @@
 				} while (0)
 
 
-/*
- * Each time OPTEED hands over control to OPTEE the entry reason is saved
- * to be able to tell how the returning SMC from OPTEE should be handled
- * since that SMC can't identify itself (x0-x3 are all raw return values).
- */
-#define OPTEE_ENTRY_REASON_INIT		0
-#define OPTEE_ENTRY_REASON_ON		1
-#define OPTEE_ENTRY_REASON_OFF		2
-#define OPTEE_ENTRY_REASON_RESUME	3
-#define OPTEE_ENTRY_REASON_SUSPEND	4
-#define OPTEE_ENTRY_REASON_CALL		5
-#define OPTEE_ENTRY_REASON_FIQ		6
-
-#define OPTEE_ENTRY_REASON_SHIFT	2
-#define OPTEE_ENTRY_REASON_MASK		0x7
-
-#define get_optee_entry_reason(st) \
-	(((st) >> OPTEE_ENTRY_REASON_SHIFT) & OPTEE_ENTRY_REASON_MASK)
-#define set_optee_entry_reason(st, v) \
-	do { \
-		(st) = (((v) & OPTEE_ENTRY_REASON_MASK) <<		\
-				OPTEE_ENTRY_REASON_SHIFT) |		\
-		       ((st) & ~(OPTEE_ENTRY_REASON_MASK <<		\
-				OPTEE_ENTRY_REASON_SHIFT));		\
-	} while (0)
-
 /*******************************************************************************
  * OPTEE execution state information i.e. aarch32 or aarch64
  ******************************************************************************/

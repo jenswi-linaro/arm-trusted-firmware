@@ -59,9 +59,6 @@ static int32_t opteed_cpu_off_handler(uint64_t cookie)
 	assert(optee_vectors);
 	assert(get_optee_pstate(optee_ctx->state) == OPTEE_PSTATE_ON);
 
-	/* Set entry reason to find our way back below */
-	set_optee_entry_reason(optee_ctx->state, OPTEE_ENTRY_REASON_OFF);
-
 	/* Program the entry point and enter OPTEE */
 	cm_set_elr_el3(SECURE, (uint64_t) &optee_vectors->cpu_off_entry);
 	rc = opteed_synchronous_sp_entry(optee_ctx);
@@ -95,9 +92,6 @@ static void opteed_cpu_suspend_handler(uint64_t power_state)
 
 	assert(optee_vectors);
 	assert(get_optee_pstate(optee_ctx->state) == OPTEE_PSTATE_ON);
-
-	/* Set entry reason to find our way back below */
-	set_optee_entry_reason(optee_ctx->state, OPTEE_ENTRY_REASON_SUSPEND);
 
 	/* Program the entry point, power_state parameter and enter OPTEE */
 	write_ctx_reg(get_gpregs_ctx(&optee_ctx->cpu_ctx),
@@ -133,9 +127,6 @@ static void opteed_cpu_on_finish_handler(uint64_t cookie)
 	assert(optee_vectors);
 	assert(get_optee_pstate(optee_ctx->state) == OPTEE_PSTATE_OFF);
 
-	/* Set entry reason to find our way back below */
-	set_optee_entry_reason(optee_ctx->state, OPTEE_ENTRY_REASON_ON);
-
 	/* Initialise this cpu's secure context */
 	opteed_init_secure_context((uint64_t)&optee_vectors->cpu_on_entry,
 				   opteed_rw, mpidr, optee_ctx);
@@ -168,9 +159,6 @@ static void opteed_cpu_suspend_finish_handler(uint64_t suspend_level)
 
 	assert(optee_vectors);
 	assert(get_optee_pstate(optee_ctx->state) == OPTEE_PSTATE_SUSPEND);
-
-	/* Set entry reason to find our way back below */
-	set_optee_entry_reason(optee_ctx->state, OPTEE_ENTRY_REASON_RESUME);
 
 	/* Program the entry point, suspend_level and enter the SP */
 	write_ctx_reg(get_gpregs_ctx(&optee_ctx->cpu_ctx),

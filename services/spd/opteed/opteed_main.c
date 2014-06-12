@@ -51,6 +51,8 @@
 #include <optee.h>
 #include <uuid.h>
 #include "opteed_private.h"
+#include "teesmc.h"
+#include "teesmc_opteed.h"
 
 /*******************************************************************************
  * Address of the entrypoint vector table in OPTEE. It is
@@ -290,8 +292,6 @@ uint64_t opteed_smc_handler(uint32_t smc_fid,
 
 		cm_el1_sysregs_context_restore(SECURE);
 		cm_set_next_eret_context(SECURE);
-		set_optee_entry_reason(optee_ctx->state,
-				       OPTEE_ENTRY_REASON_CALL);
 
 		/* Propagate hypervisor client ID */
 		write_ctx_reg(get_gpregs_ctx(&optee_ctx->cpu_ctx),
@@ -306,11 +306,12 @@ uint64_t opteed_smc_handler(uint32_t smc_fid,
 	 * Returning from OPTEE
 	 */
 
-	switch (get_optee_entry_reason(optee_ctx->state)) {
+	switch (smc_fid) {
 	/*
 	 * OPTEE has finished initialising itself after a cold boot
 	 */
-	case OPTEE_ENTRY_REASON_INIT:
+	case TEESMC32_OPTEED_RETURN_ENTRY_DONE:
+	case TEESMC64_OPTEED_RETURN_ENTRY_DONE:
 		/*
 		 * Stash the OPTEE entry points information. This is done
 		 * only once on the primary cpu
@@ -330,23 +331,27 @@ uint64_t opteed_smc_handler(uint32_t smc_fid,
 	 * OPTEE has finished turning itself on in response to an earlier
 	 * psci cpu_on request
 	 */
-	case OPTEE_ENTRY_REASON_ON:
+	case TEESMC32_OPTEED_RETURN_ON_DONE:
+	case TEESMC64_OPTEED_RETURN_ON_DONE:
 
 	/*
 	 * OPTEE has finished turning itself off in response to an earlier
 	 * psci cpu_off request.
 	 */
-	case OPTEE_ENTRY_REASON_OFF:
+	case TEESMC32_OPTEED_RETURN_OFF_DONE:
+	case TEESMC64_OPTEED_RETURN_OFF_DONE:
 	/*
 	 * OPTEE has finished resuming itself after an earlier psci
 	 * cpu_suspend request.
 	 */
-	case OPTEE_ENTRY_REASON_RESUME:
+	case TEESMC32_OPTEED_RETURN_RESUME_DONE:
+	case TEESMC64_OPTEED_RETURN_RESUME_DONE:
 	/*
 	 * OPTEE has finished suspending itself after an earlier psci
 	 * cpu_suspend request.
 	 */
-	case OPTEE_ENTRY_REASON_SUSPEND:
+	case TEESMC32_OPTEED_RETURN_SUSPEND_DONE:
+	case TEESMC64_OPTEED_RETURN_SUSPEND_DONE:
 
 		/*
 		 * OPTEE reports completion. The OPTEED must have initiated the
@@ -360,7 +365,8 @@ uint64_t opteed_smc_handler(uint32_t smc_fid,
 	 * OPTEE is returning from a call or being preemted from a call, in
 	 * either case execution should resume in the normal world.
 	 */
-	case OPTEE_ENTRY_REASON_CALL:
+	case TEESMC32_OPTEED_RETURN_CALL_DONE:
+	case TEESMC64_OPTEED_RETURN_CALL_DONE:
 		/*
 		 * This is the result from the secure client of an
 		 * earlier request. The results are in x0-x3. Copy it
@@ -378,15 +384,14 @@ uint64_t opteed_smc_handler(uint32_t smc_fid,
 		cm_el1_sysregs_context_restore(NON_SECURE);
 		cm_set_next_eret_context(NON_SECURE);
 
-		SMC_RET4(ns_cpu_context,
-			 read_ctx_reg(get_gpregs_ctx(handle), CTX_GPREG_X0),
-			 x1, x2, x3);
+		SMC_RET4(ns_cpu_context, x1, x2, x3, x4);
 
 	/*
 	 * OPTEE has finished handling a S-EL1 FIQ interrupt. Execution
 	 * should resume in the normal world.
 	 */
-	case OPTEE_ENTRY_REASON_FIQ:
+	case TEESMC32_OPTEED_RETURN_FIQ_DONE:
+	case TEESMC64_OPTEED_RETURN_FIQ_DONE:
 		/* Get a reference to the non-secure context */
 		ns_cpu_context = cm_get_context(mpidr, NON_SECURE);
 		assert(ns_cpu_context);

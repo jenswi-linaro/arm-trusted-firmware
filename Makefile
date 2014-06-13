@@ -371,7 +371,7 @@ $(ELF) : $(OBJS) $(LINKERFILE)
 
 $(DUMP) : $(ELF)
 	@echo "  OD      $$@"
-	$${Q}$${OD} -dx $$< > $$@
+	$${Q}$${OD} -dxl $$< > $$@
 
 $(BIN) : $(ELF)
 	@echo "  BIN     $$@"

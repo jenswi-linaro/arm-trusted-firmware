@@ -57,6 +57,21 @@ func opteed_enter_sp
 	stp	x29, x30, [sp, #OPTEED_C_RT_CTX_X29]
 
 	/* ---------------------------------------------
+	 * Save scr_el3
+	 *
+	 * Without this it will caused a problem when we
+	 * have a 32bit Secure OS and 64bit rich OS.
+	 * After el3_exit, scr_el3 will be modified to
+	 * 32bit mode, the psci common code will use scr_el3
+	 * to determine which mode(32 or 64bit) it should
+	 * use to return to normal world. Thus, it will in
+	 * turn caused entering 64bit linux with 32bit mode
+	 * ---------------------------------------------
+	 */
+	mrs	x19, scr_el3
+	stp	x19, xzr, [sp, #OPTEED_C_RT_CTX_SCR]
+
+	/* ---------------------------------------------
 	 * Everything is setup now. el3_exit() will
 	 * use the secure context to restore to the
 	 * general purpose and EL3 system registers to
@@ -80,6 +95,10 @@ func opteed_enter_sp
 func opteed_exit_sp
 	/* Restore the previous stack */
 	mov	sp, x0
+
+	/* Restore scr_el3 */
+	ldp	x19, xzr, [sp, #(OPTEED_C_RT_CTX_SCR - OPTEED_C_RT_CTX_SIZE)]
+	msr	scr_el3, x19
 
 	/* Restore callee-saved registers on to the stack */
 	ldp	x19, x20, [x0, #(OPTEED_C_RT_CTX_X19 - OPTEED_C_RT_CTX_SIZE)]

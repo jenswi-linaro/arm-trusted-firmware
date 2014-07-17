@@ -98,14 +98,7 @@ static void opteed_cpu_suspend_handler(uint64_t power_state)
 		      CTX_GPREG_X0,
 		      power_state);
 	cm_set_elr_el3(SECURE, (uint64_t) &optee_vectors->cpu_suspend_entry);
-#if 0
-	/*
-	 * XXX why does this cause a crash later?
-	 * Probably because the normal world registers aren't saved
-	 * properly.
-	 */
 	rc = opteed_synchronous_sp_entry(optee_ctx);
-#endif
 
 	/*
 	 * Read the response from OPTEE. A non-zero return means that
@@ -172,9 +165,7 @@ static void opteed_cpu_suspend_finish_handler(uint64_t suspend_level)
 		      CTX_GPREG_X0,
 		      suspend_level);
 	cm_set_elr_el3(SECURE, (uint64_t) &optee_vectors->cpu_resume_entry);
-#if 0
 	rc = opteed_synchronous_sp_entry(optee_ctx);
-#endif
 
 	/*
 	 * Read the response from OPTEE. A non-zero return means that

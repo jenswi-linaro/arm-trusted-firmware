@@ -63,6 +63,15 @@ static void update_dt(void)
 		return;
 	}
 
+#if ENABLE_SPCI
+	if (dt_add_add_res_mem_node(fdt, "optee-reserved",
+				    OPTEE_SHARED_MEMORY_BASE,
+				    OPTEE_SHARED_MEMORY_SIZE)) {
+		ERROR("Failed configure non-secure shared memory in Device Tree\n");
+		return;
+	}
+#endif
+
 	ret = fdt_pack(fdt);
 	if (ret < 0)
 		ERROR("Failed to pack Device Tree at %p: error %d\n", fdt, ret);

@@ -93,3 +93,71 @@ int dt_add_psci_cpu_enable_methods(void *fdt)
 	}
 	return 0;
 }
+
+#if ENABLE_SPCI
+static void set_dt_val(void *data, uint32_t cell_size, uint64_t val)
+{
+	if (cell_size == 1) {
+		fdt32_t v = cpu_to_fdt32((uint32_t)val);
+
+		memcpy(data, &v, sizeof(v));
+	} else {
+		fdt64_t v = cpu_to_fdt64(val);
+
+		memcpy(data, &v, sizeof(v));
+	}
+}
+
+int dt_add_add_res_mem_node(void *fdt, const char *name, uintptr_t pa,
+			    size_t size)
+{
+	int offs;
+	int ret;
+	int addr_size = 2;
+	int len_size = 2;
+
+	offs = fdt_path_offset(fdt, "/reserved-memory");
+	if (offs >= 0) {
+		addr_size = fdt_address_cells(fdt, offs);
+		if (addr_size < 0)
+			return -1;
+		len_size = fdt_size_cells(fdt, offs);
+		if (len_size < 0)
+			return -1;
+	} else {
+		offs = fdt_path_offset(fdt, "/");
+		if (offs < 0)
+			return -1;
+		offs = fdt_add_subnode(fdt, offs, "reserved-memory");
+		if (offs < 0)
+			return -1;
+		ret = fdt_setprop_cell(fdt, offs, "#address-cells", addr_size);
+		if (ret < 0)
+			return -1;
+		ret = fdt_setprop_cell(fdt, offs, "#size-cells", len_size);
+		if (ret < 0)
+			return -1;
+		ret = fdt_setprop(fdt, offs, "ranges", NULL, 0);
+		if (ret < 0)
+			return -1;
+	}
+
+	offs = fdt_add_subnode(fdt, offs, name);
+	if (offs >= 0) {
+		uint32_t data[FDT_MAX_NCELLS * 2];
+
+		set_dt_val(data, addr_size, pa);
+		set_dt_val(data + addr_size, len_size, size);
+		ret = fdt_setprop(fdt, offs, "reg", data,
+				  sizeof(uint32_t) * (addr_size + len_size));
+		if (ret < 0)
+			return -1;
+		ret = fdt_setprop(fdt, offs, "no-map", NULL, 0);
+		if (ret < 0)
+			return -1;
+	} else {
+		return -1;
+	}
+	return 0;
+}
+#endif /*ENABLE_SPCI*/

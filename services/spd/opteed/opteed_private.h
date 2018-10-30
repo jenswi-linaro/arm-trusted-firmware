@@ -116,6 +116,7 @@ CASSERT(OPTEED_C_RT_CTX_SIZE == sizeof(c_rt_regs_t),	\
 
 /*******************************************************************************
  * Structure which helps the OPTEED to maintain the per-cpu state of OPTEE.
+ * 'ns_smc_fid'     - last non-secure SMC function handled
  * 'state'          - collection of flags to track OPTEE state e.g. on/off
  * 'mpidr'          - mpidr to associate a context with a cpu
  * 'c_rt_ctx'       - stack address to restore C runtime context from after
@@ -123,6 +124,9 @@ CASSERT(OPTEED_C_RT_CTX_SIZE == sizeof(c_rt_regs_t),	\
  * 'cpu_ctx'        - space to maintain OPTEE architectural state
  ******************************************************************************/
 typedef struct optee_context {
+#if ENABLE_SPCI
+	uint32_t ns_smc_fid;
+#endif
 	uint32_t state;
 	uint64_t mpidr;
 	uint64_t c_rt_ctx;

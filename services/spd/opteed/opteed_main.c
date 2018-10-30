@@ -25,10 +25,11 @@
 #include <runtime_svc.h>
 #include <stddef.h>
 #include <uuid.h>
+#include <spci.h>
+#include <spinlock.h>
 #include "opteed_private.h"
 #include "teesmc_opteed.h"
 #include "teesmc_opteed_macros.h"
-
 
 /*******************************************************************************
  * Address of the entrypoint vector table in OPTEE. It is
@@ -178,7 +179,497 @@ static int32_t opteed_init(void)
 	return rc;
 }
 
+#if ENABLE_SPCI
 
+
+#define OPTEE_MSG_UID_0		0x384fb3e0
+#define OPTEE_MSG_UID_1		0xe7f811e3
+#define OPTEE_MSG_UID_2		0xaf630002
+#define OPTEE_MSG_UID_3		0xa5d5c51b
+
+static const struct {
+	uint32_t attr;
+	size_t size;
+	uint64_t base_addr;
+	uint16_t granul;
+	uint32_t uuid[4];
+} shm_resources[] = {
+	{ .attr = 0, .size = OPTEE_SHARED_MEMORY_SIZE,
+	  .base_addr = OPTEE_SHARED_MEMORY_BASE, .granul = PAGE_SIZE_4KB,
+	  .uuid = { OPTEE_MSG_UID_0, OPTEE_MSG_UID_1, OPTEE_MSG_UID_2,
+		    OPTEE_MSG_UID_3 }, },
+};
+
+int find_sp_handle(u_register_t x1, u_register_t x2, u_register_t x3,
+		   u_register_t x4, uint32_t *sp_handle)
+{
+	size_t n;
+
+	for (n = 0; n < ARRAY_SIZE(shm_resources); n++) {
+		if (shm_resources[n].uuid[0] == x1 &&
+		    shm_resources[n].uuid[1] == x2 &&
+		    shm_resources[n].uuid[2] == x3 &&
+		    shm_resources[n].uuid[3] == x4) {
+			*sp_handle = n << 16;
+			return SPCI_SUCCESS;
+		}
+	}
+
+	*sp_handle = 0;
+	return SPCI_NOT_PRESENT;
+}
+
+int verify_sp_handle(uint32_t sp_handle)
+{
+	if ((sp_handle >> 16) >= ARRAY_SIZE(shm_resources))
+		return SPCI_INVALID_PARAMETER;
+
+	return SPCI_SUCCESS;
+}
+
+static int get_resource(uint32_t idx, uint32_t rsr, void *handle)
+{
+	uint64_t v;
+
+	if (idx >= ARRAY_SIZE(shm_resources))
+		SMC_RET1(handle, SPCI_INVALID_PARAMETER);
+
+	switch (rsr) {
+	case SPCI_RES_TYPE_BASE_ADDR:
+		v = shm_resources[idx].base_addr;
+		SMC_RET3(handle, SPCI_SUCCESS, v >> 32, v & 0xffffffff);
+
+	case SPCI_RES_TYPE_ATTR_SIZE:
+		v = shm_resources[idx].size;
+		SMC_RET4(handle, SPCI_SUCCESS, shm_resources[idx].attr,
+			 v >> 32, v & 0xffffffff);
+
+	case SPCI_RES_TYPE_UUID_LOWER:
+		SMC_RET3(handle, SPCI_SUCCESS, shm_resources[idx].uuid[2],
+			 shm_resources[idx].uuid[3]);
+
+	case SPCI_RES_TYPE_UUID_UPPER:
+		SMC_RET3(handle, SPCI_SUCCESS, shm_resources[idx].uuid[0],
+			 shm_resources[idx].uuid[1]);
+
+	default:
+		SMC_RET1(handle, SPCI_INVALID_PARAMETER);
+	}
+}
+
+
+static struct {
+	uint64_t addr;
+	uint32_t num_pages;	/* Entry free if 0 */
+	uint32_t granul;	/* TODO make this a shift value */
+} reg_shm[30];
+
+static spinlock_t reg_shm_lock;
+
+static uintptr_t register_shm(uint64_t addr, uint32_t num_pages,
+			      uint32_t granul, uint32_t *handle)
+{
+	unsigned int n;
+	uintptr_t rc = SPCI_NO_MEMORY;
+
+#if 0
+	/* TODO... */
+	for (n = 0; n < ARRAY_SIZE(shm_resources); n++)
+		if (addr >= shm_resources[n].base_addr &&
+		    addr < (shm_resources[n].base_addr + shm_resources[n].size))
+			goto found_shm;
+	return SPCI_INVALID_PARAMETER;
+
+found_shm:
+	if (granul != shm_resources[n].granul)
+		return SPCI_INVALID_PARAMETER;
+#else
+	if (granul != PAGE_SIZE_4KB)
+		return SPCI_INVALID_PARAMETER;
+#endif
+
+	spin_lock(&reg_shm_lock);
+	for (n = 0; n < ARRAY_SIZE(reg_shm); n++) {
+		if (!reg_shm[n].num_pages) {
+			reg_shm[n].addr = addr;
+			reg_shm[n].granul = granul;
+			reg_shm[n].num_pages = num_pages;
+			*handle = n;
+			rc = SPCI_SUCCESS;
+			break;
+		}
+	}
+
+	spin_unlock(&reg_shm_lock);
+
+	return rc;
+}
+
+static uintptr_t unregister_shm(uint32_t handle, bool check_only)
+{
+	uintptr_t rc = SPCI_INVALID_PARAMETER;
+
+	if (handle >= ARRAY_SIZE(reg_shm))
+		return rc;
+
+	spin_lock(&reg_shm_lock);
+
+	if (reg_shm[handle].num_pages) {
+		if (!check_only)
+			reg_shm[handle].num_pages = 0;
+		rc = SPCI_SUCCESS;
+	}
+
+	spin_unlock(&reg_shm_lock);
+
+	return rc;
+}
+
+static uintptr_t get_shm_info(uint32_t shm_handle, void *handle)
+{
+	uintptr_t rc = SPCI_INVALID_PARAMETER;
+	uint32_t hi_addr = 0;
+	uint32_t lo_addr = 0;
+	uint32_t num_pages = 0;
+
+	if (shm_handle > ARRAY_SIZE(reg_shm))
+		goto out;
+
+	spin_lock(&reg_shm_lock);
+
+	if (!reg_shm[shm_handle].num_pages)
+		goto out_unlock;
+
+	hi_addr = reg_shm[shm_handle].addr >> 32;
+	lo_addr = reg_shm[shm_handle].addr & 0xffffffff;
+	num_pages = reg_shm[shm_handle].num_pages;
+	rc = SPCI_SUCCESS;
+
+out_unlock:
+	spin_unlock(&reg_shm_lock);
+out:
+	SMC_RET4(handle, rc, hi_addr, lo_addr, num_pages);
+}
+
+
+uintptr_t spci_smc_handler(uint32_t smc_fid, u_register_t x1, u_register_t x2,
+			   u_register_t x3, u_register_t x4, void *cookie,
+			   void *handle, u_register_t flags)
+{
+	uint32_t linear_id = plat_my_core_pos();
+	optee_context_t *optee_ctx = &opteed_sp_context[linear_id];
+	uint32_t sp_handle;
+	uint32_t shm_handle = 0;
+	uint64_t shm_addr;
+	unsigned int shm_granul;
+	uintptr_t rc;
+	u_register_t x5 = 0;
+	u_register_t x6 = 0;
+	uint64_t entry_func;
+	bool yielding_call;
+
+	/* We're only serving Normal world, except for two functions */
+	if (!is_caller_non_secure(flags) && smc_fid != SPCI_VERSION &&
+	    smc_fid != SPCI_GET_RESOURCE && smc_fid != SPCI_GET_SHM_INFO) {
+		WARN("Secure SPCI call blocked: 0x%x\n", smc_fid);
+		SMC_RET1(handle, SMC_UNK);
+	}
+
+	if (is_caller_non_secure(flags))
+		optee_ctx->ns_smc_fid = smc_fid;
+	switch (smc_fid) {
+	case SPCI_VERSION:
+		SMC_RET1(handle, SPCI_VERSION_COMPILED);
+
+	case SPCI_HANDLE_OPEN:
+		rc = find_sp_handle(x1, x2, x3, x4, &sp_handle);
+		SMC_RET2(handle, rc, sp_handle);
+
+	case SPCI_HANDLE_CLOSE:
+		/*
+		 * Note that we're not keeping track of resourses needed to
+		 * be able to return SPCI_BUSY in a meaningful way.
+		 */
+		rc = verify_sp_handle(x1);
+		SMC_RET1(handle, rc);
+
+	case SPCI_SHM_REGISTER_32:
+	case SPCI_SHM_REGISTER_64:
+		if (GET_SMC_CC(smc_fid) == SMC_32)
+			shm_addr = x1 & 0xffffffff;
+		else
+			shm_addr = x1;
+
+		switch (x3 & 0xffffffff) {
+		case 0: /* 4KB granularity */
+			shm_granul = PAGE_SIZE_4KB;
+			break;
+		case 1 << 11: /* 16KB granularity */
+			shm_granul = PAGE_SIZE_16KB;
+			break;
+		case 2 << 11: /* 64KB granularity */
+			shm_granul = PAGE_SIZE_64KB;
+			break;
+		default:
+			SMC_RET1(handle, SPCI_INVALID_PARAMETER);
+		}
+
+		rc = register_shm(shm_addr, x2, shm_granul, &shm_handle);
+		SMC_RET2(handle, rc, shm_handle);
+
+	case SPCI_SHM_UNREGISTER_32:
+	case SPCI_SHM_UNREGISTER_64:
+		shm_handle = x1;
+		rc = unregister_shm(shm_handle, true /*check_only*/);
+		if (rc) {
+			WARN("SHM handle not found %x\n", shm_handle);
+			SMC_RET1(handle, rc);
+		}
+
+		/*
+		 * Enter SP to unregister the shared memory
+		 */
+		x1 = shm_handle;
+		yielding_call = false;
+		break;
+
+	case SPCI_REQUEST_START_32:
+	case SPCI_REQUEST_START_64:
+	case SPCI_REQUEST_RESUME_32:
+	case SPCI_REQUEST_RESUME_64:
+		/*
+		 * Enter SP to handle the request
+		 */
+		yielding_call = true;
+		break;
+
+
+	case SPCI_REQUEST_BLOCKING_BY_VAL_32:
+	case SPCI_REQUEST_BLOCKING_BY_VAL_64:
+		/*
+		 * Enter SP to handle the request
+		 */
+		yielding_call = false;
+		break;
+
+	case SPCI_GET_RESOURCE:
+		return get_resource(x1, x2, handle);
+
+	case SPCI_GET_SHM_INFO:
+		return get_shm_info(x1, handle);
+
+	case SPCI_SHM_LIST_GET_32:
+	case SPCI_SHM_LIST_GET_64:
+	case SPCI_REQUEST_BLOCKING_32:
+	case SPCI_REQUEST_BLOCKING_64:
+	case SPCI_GET_RESPONSE_32:
+	case SPCI_GET_RESPONSE_64:
+	case SPCI_RESET_CLIENT_STATE_32:
+	case SPCI_RESET_CLIENT_STATE_64:
+	case SPCI_REQUEST_START_BY_VAL_32:
+	case SPCI_REQUEST_START_BY_VAL_64:
+	default:
+		SMC_RET1(handle, SMC_UNK);
+	}
+
+	assert(handle == cm_get_context(NON_SECURE));
+	cm_el1_sysregs_context_save(NON_SECURE);
+	assert(&optee_ctx->cpu_ctx == cm_get_context(SECURE));
+
+	if (yielding_call)
+		entry_func = (uint64_t)&optee_vector_table->yield_smc_entry;
+	else
+		entry_func = (uint64_t)&optee_vector_table->fast_smc_entry;
+
+	cm_set_elr_el3(SECURE, entry_func);
+	cm_el1_sysregs_context_restore(SECURE);
+	cm_set_next_eret_context(SECURE);
+
+	SMC_RET8(&optee_ctx->cpu_ctx, smc_fid, x1, x2, x3, x4, x5, x6,
+		 read_ctx_reg(get_gpregs_ctx(handle), CTX_GPREG_X7));
+}
+
+static void call_done_fixup(optee_context_t *optee_ctx, u_register_t *x1,
+			    u_register_t *x2, u_register_t *x3)
+{
+	switch (optee_ctx->ns_smc_fid) {
+	case SPCI_SHM_UNREGISTER_32:
+	case SPCI_SHM_UNREGISTER_64:
+		if (!*x1 || *x1 == SPCI_INVALID_PARAMETER) {
+			/*
+			 * If *x1 is SPCI_INVALID_PARAMETER then OP-TEE
+			 * hasn't retrieved the shared memory info yet so
+			 * it's not really an error in this context.
+			 */
+			unregister_shm(*x2, false /*!check_only*/);
+			*x1 = SPCI_SUCCESS;
+		}
+		break;
+	default:
+		break;
+	}
+	optee_ctx->ns_smc_fid = 0;
+}
+
+static uintptr_t optee_smc_handler(uint32_t smc_fid, u_register_t x1,
+				   u_register_t x2, u_register_t x3,
+				   u_register_t x4, void *cookie,
+				   void *handle, u_register_t flags)
+{
+	cpu_context_t *ns_cpu_context;
+	uint32_t linear_id = plat_my_core_pos();
+	optee_context_t *optee_ctx = &opteed_sp_context[linear_id];
+	uintptr_t rc;
+
+	/* We're only serving Secure world for these SMCs */
+	if (is_caller_non_secure(flags)) {
+		WARN("Non-secure Trusted OS call blocked: 0x%x\n", smc_fid);
+		SMC_RET1(handle, SMC_UNK);
+	}
+
+	/*
+	 * Returning from OPTEE
+	 */
+
+	switch (smc_fid) {
+	/*
+	 * OPTEE has finished initialising itself after a cold boot
+	 */
+	case TEESMC_OPTEED_RETURN_ENTRY_DONE:
+		/*
+		 * Stash the OPTEE entry points information. This is done
+		 * only once on the primary cpu
+		 */
+		assert(optee_vector_table == NULL);
+		optee_vector_table = (optee_vectors_t *) x1;
+
+		if (optee_vector_table) {
+			set_optee_pstate(optee_ctx->state, OPTEE_PSTATE_ON);
+
+			/*
+			 * OPTEE has been successfully initialized.
+			 * Register power management hooks with PSCI
+			 */
+			psci_register_spd_pm_hook(&opteed_pm);
+
+			/*
+			 * Register an interrupt handler for S-EL1 interrupts
+			 * when generated during code executing in the
+			 * non-secure state.
+			 */
+			flags = 0;
+			set_interrupt_rm_flag(flags, NON_SECURE);
+			rc = register_interrupt_type_handler(INTR_TYPE_S_EL1,
+						opteed_sel1_interrupt_handler,
+						flags);
+			if (rc)
+				panic();
+		}
+
+		/*
+		 * OPTEE reports completion. The OPTEED must have initiated
+		 * the original request through a synchronous entry into
+		 * OPTEE. Jump back to the original C runtime context.
+		 */
+		opteed_synchronous_sp_exit(optee_ctx, x1);
+		break;
+
+
+	/*
+	 * These function IDs is used only by OP-TEE to indicate it has
+	 * finished:
+	 * 1. turning itself on in response to an earlier psci
+	 *    cpu_on request
+	 * 2. resuming itself after an earlier psci cpu_suspend
+	 *    request.
+	 */
+	case TEESMC_OPTEED_RETURN_ON_DONE:
+	case TEESMC_OPTEED_RETURN_RESUME_DONE:
+
+	/*
+	 * These function IDs is used only by the SP to indicate it has
+	 * finished:
+	 * 1. suspending itself after an earlier psci cpu_suspend
+	 *    request.
+	 * 2. turning itself off in response to an earlier psci
+	 *    cpu_off request.
+	 */
+	case TEESMC_OPTEED_RETURN_OFF_DONE:
+	case TEESMC_OPTEED_RETURN_SUSPEND_DONE:
+	case TEESMC_OPTEED_RETURN_SYSTEM_OFF_DONE:
+	case TEESMC_OPTEED_RETURN_SYSTEM_RESET_DONE:
+
+		/*
+		 * OPTEE reports completion. The OPTEED must have initiated the
+		 * original request through a synchronous entry into OPTEE.
+		 * Jump back to the original C runtime context, and pass x1 as
+		 * return value to the caller
+		 */
+		opteed_synchronous_sp_exit(optee_ctx, x1);
+		break;
+
+	/*
+	 * OPTEE is returning from a call or being preempted from a call, in
+	 * either case execution should resume in the normal world.
+	 */
+	case TEESMC_OPTEED_RETURN_CALL_DONE:
+		/*
+		 * This is the result from the secure client of an
+		 * earlier request. The results are in x0-x3. Copy it
+		 * into the non-secure context, save the secure state
+		 * and return to the non-secure state.
+		 */
+		call_done_fixup(optee_ctx, &x1, &x2, &x3);
+
+		assert(handle == cm_get_context(SECURE));
+		cm_el1_sysregs_context_save(SECURE);
+
+		/* Get a reference to the non-secure context */
+		ns_cpu_context = cm_get_context(NON_SECURE);
+		assert(ns_cpu_context);
+
+		/* Restore non-secure state */
+		cm_el1_sysregs_context_restore(NON_SECURE);
+		cm_set_next_eret_context(NON_SECURE);
+
+		SMC_RET4(ns_cpu_context, x1, x2, x3, x4);
+
+	/*
+	 * OPTEE has finished handling a S-EL1 FIQ interrupt. Execution
+	 * should resume in the normal world.
+	 */
+	case TEESMC_OPTEED_RETURN_FIQ_DONE:
+		/* Get a reference to the non-secure context */
+		ns_cpu_context = cm_get_context(NON_SECURE);
+		assert(ns_cpu_context);
+
+		/*
+		 * Restore non-secure state. There is no need to save the
+		 * secure system register context since OPTEE was supposed
+		 * to preserve it during S-EL1 interrupt handling.
+		 */
+		cm_el1_sysregs_context_restore(NON_SECURE);
+		cm_set_next_eret_context(NON_SECURE);
+
+		SMC_RET0((uint64_t) ns_cpu_context);
+
+	default:
+		panic();
+	}
+
+
+}
+
+DECLARE_RT_SVC(
+	optee_fast,
+
+	OEN_TOS_START,
+	OEN_TOS_END,
+	SMC_TYPE_FAST,
+	opteed_setup,
+	optee_smc_handler
+);
+#else
 /*******************************************************************************
  * This function is responsible for handling all SMCs in the Trusted OS/App
  * range from the non-secure state as defined in the SMC Calling Convention
@@ -417,3 +908,4 @@ DECLARE_RT_SVC(
 	NULL,
 	opteed_smc_handler
 );
+#endif

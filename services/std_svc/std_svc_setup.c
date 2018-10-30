@@ -13,9 +13,10 @@
 #include <runtime_svc.h>
 #include <sdei.h>
 #include <smccc_helpers.h>
+#include <spci.h>
 #include <spm_svc.h>
-#include <std_svc.h>
 #include <stdint.h>
+#include <std_svc.h>
 #include <uuid.h>
 
 /* Standard Service UUID */
@@ -110,6 +111,17 @@ static uintptr_t std_svc_smc_handler(uint32_t smc_fid,
 	if (is_spm_fid(smc_fid)) {
 		return spm_smc_handler(smc_fid, x1, x2, x3, x4, cookie,
 				       handle, flags);
+	}
+#endif
+
+#if ENABLE_SPCI
+	/*
+	 * Dispatch SPCI calls to SPCI SMC handler and return its return
+	 * value
+	 */
+	if (is_spci_fid(smc_fid)) {
+		return spci_smc_handler(smc_fid, x1, x2, x3, x4, cookie,
+					handle, flags);
 	}
 #endif
 

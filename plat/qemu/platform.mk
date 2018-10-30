@@ -16,6 +16,10 @@ $(eval $(call add_define,ARMV7_SUPPORTS_GENERIC_TIMER))
 NEED_BL32		:=	yes
 endif # ARMv7
 
+ifeq (${ARM_ARCH_MAJOR},8)
+ENABLE_SPCI		:=	1
+endif
+
 ifeq (${SPD},opteed)
 add-lib-optee 		:= 	yes
 endif

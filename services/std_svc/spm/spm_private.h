@@ -46,6 +46,29 @@ typedef enum sp_state {
 	SP_STATE_BUSY
 } sp_state_t;
 
+#if ENABLE_SPCI_ALPHA2
+#include <spci_alpha2.h>
+
+/* One buffer for each security state */
+#define SPCI_BUF_RX		0U
+#define SPCI_BUF_TX		1U
+#define SPCI_MAX_BUFS           2U
+#define SPCI_MAX_SEC_STATES     2U
+
+/* Generic message buffer structure of size 4K */
+typedef struct buf {
+	uint8_t arr[PAGE_SIZE];
+} buf_t __attribute__ ((aligned(PAGE_SIZE)));
+
+typedef struct rxtx_bufs {
+	buf_t buf[SPCI_MAX_BUFS];
+} rxtx_bufs_t;
+
+/* Pointer to an array of message buffers. Two buffers for each partition. */
+typedef rxtx_bufs_t (*rxtx_buf_ptr)[PLAT_SPM_MAX_PARTITIONS];
+
+#endif
+
 typedef struct sp_context {
 	/* 1 if the partition is present, 0 otherwise */
 	int is_present;

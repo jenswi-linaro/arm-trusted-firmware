@@ -23,7 +23,11 @@
 		soc_fw_config_addr = <0x0 0x04001000>;
 		soc_fw_config_max_size = <0x200>;
 		tos_fw_config_addr = <0x0 0x04001200>;
+#if ENABLE_SPCI_ALPHA2
+		tos_fw_config_max_size = <0x1000>;
+#else
 		tos_fw_config_max_size = <0x200>;
+#endif
 		nt_fw_config_addr = <0x0 0x80000000>;
 		nt_fw_config_max_size = <0x200>;
 		/*

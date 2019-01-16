@@ -131,7 +131,12 @@
  * Max number of elements supported by SPM in this platform. The defines below
  * are used to allocate memory at compile time for different arrays in SPM.
  */
+#if !ENABLE_SPCI_ALPHA2
 #define PLAT_SPM_MAX_PARTITIONS		U(2)
+#else
+#define PLAT_SPM_MAX_PARTITIONS		U(1)
+#define PLAT_SPM_MAX_CLIENTS		U(1)
+#endif
 
 #define PLAT_SPM_MEM_REGIONS_MAX	U(80)
 #define PLAT_SPM_NOTIFICATIONS_MAX	U(30)

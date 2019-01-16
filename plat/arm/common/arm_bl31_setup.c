@@ -303,6 +303,9 @@ void __init arm_bl31_plat_arch_setup(void)
 #if USE_COHERENT_MEM
 		ARM_MAP_BL_COHERENT_RAM,
 #endif
+#if ENABLE_SPCI_ALPHA2
+		ARM_MAP_SPCI_MSG_BUFS_SEC,
+#endif
 		{0}
 	};
 

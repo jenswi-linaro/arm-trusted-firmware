@@ -272,6 +272,13 @@
 						ROMLIB_RW_END	- ROMLIB_RW_BASE,\
 						MT_MEMORY | MT_RW | MT_SECURE)
 #endif
+#if ENABLE_SPCI_ALPHA2
+#define ARM_MAP_SPCI_MSG_BUFS_SEC	MAP_REGION_FLAT(			\
+						SPCI_MSG_BUFS_SEC_START,	\
+						SPCI_MSG_BUFS_SEC_END		\
+						- SPCI_MSG_BUFS_SEC_START,	\
+						MT_MEMORY | MT_RW | MT_SECURE)
+#endif
 
 /*
  * Map mem_protect flash region with read and write permissions

@@ -117,6 +117,16 @@ IMPORT_SYM(unsigned long, __COHERENT_RAM_START__,	BL_COHERENT_RAM_BASE);
 IMPORT_SYM(unsigned long, __COHERENT_RAM_END__,		BL_COHERENT_RAM_END);
 #endif
 
+/*
+ * The next 4 constants identify the memory set aside for a RX/TX buffer pair
+ * for each secure partition. The size and alignment of each buffer = PAGE_SIZE.
+ * This is guaranteed by the linker script.
+ */
+#if defined(IMAGE_BL31) && ENABLE_SPCI_ALPHA2
+IMPORT_SYM(unsigned long, __SPCI_MSG_BUFS_SEC_START__,	SPCI_MSG_BUFS_SEC_START);
+IMPORT_SYM(unsigned long, __SPCI_MSG_BUFS_SEC_END__,	SPCI_MSG_BUFS_SEC_END);
+#endif
+
 /*******************************************************************************
  * Structure used for telling the next BL how much of a particular type of
  * memory is available for its use and how much is already used.

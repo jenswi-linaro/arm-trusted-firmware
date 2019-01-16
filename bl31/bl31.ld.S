@@ -299,6 +299,15 @@ SECTIONS
     } >RAM
 #endif
 
+#if ENABLE_SPCI_ALPHA2
+    spci_msg_bufs_sec (NOLOAD) : ALIGN(PAGE_SIZE) {
+        __SPCI_MSG_BUFS_SEC_START__ = .;
+	FILL(0x0);
+	. += (PLAT_SPM_MAX_PARTITIONS * 2 * PAGE_SIZE);
+        __SPCI_MSG_BUFS_SEC_END__ = .;
+    } >RAM
+#endif
+
     /*
      * Define a linker symbol to mark end of the RW memory area for this
      * image.

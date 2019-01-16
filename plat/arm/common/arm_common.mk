@@ -249,6 +249,15 @@ BL31_SOURCES		+=	common/fdt_wrappers.c			\
 endif
 endif
 
+ifeq (${ENABLE_SPCI_ALPHA2},1)
+    ifneq (${ENABLE_SPM},1)
+        $(error "ENABLE_SPCI_ALPHA2 must be enabled only when ENABLE_SPM is enabled")
+    endif
+    ifneq (${ARM_BL31_IN_DRAM},1)
+        $(error "ENABLE_SPCI_ALPHA2 must be enabled only when ARM_BL31_IN_DRAM is enabled")
+    endif
+endif
+
 ifneq (${TRUSTED_BOARD_BOOT},0)
 
     # Include common TBB sources

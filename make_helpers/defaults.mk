@@ -165,6 +165,9 @@ ENABLE_SPM			:= 0
 # Use the deprecated SPM based on MM
 SPM_DEPRECATED			:= 1
 
+# For including SPCI Alpha2 support
+ENABLE_SPCI_ALPHA2		:= 0
+
 # Flag to introduce an infinite loop in BL1 just before it exits into the next
 # image. This is meant to help debugging the post-BL2 phase.
 SPIN_ON_BL1_EXIT		:= 0

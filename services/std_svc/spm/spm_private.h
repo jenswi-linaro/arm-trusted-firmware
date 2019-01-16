@@ -95,6 +95,13 @@ typedef struct sp_context {
 	uintptr_t spm_sp_buffer_base;
 	size_t spm_sp_buffer_size;
 	spinlock_t spm_sp_buffer_lock;
+
+#if ENABLE_SPCI_ALPHA2
+	uint16_t  sp_id;
+
+	/* RX and TX buffer references for each security state */
+	spci_buf_t *msg_bufs[SPCI_MAX_SEC_STATES][SPCI_MAX_BUFS];
+#endif
 } sp_context_t;
 
 /* Functions used to enter/exit a Secure Partition synchronously */

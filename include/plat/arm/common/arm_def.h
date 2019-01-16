@@ -465,9 +465,19 @@
 # if ENABLE_SPM
 #  define TSP_SEC_MEM_BASE		(ARM_AP_TZC_DRAM1_BASE + ULL(0x200000))
 #  define TSP_SEC_MEM_SIZE		(ARM_AP_TZC_DRAM1_SIZE - ULL(0x200000))
+# if !ENABLE_SPCI_ALPHA2
 #  define BL32_BASE			(ARM_AP_TZC_DRAM1_BASE + ULL(0x200000))
 #  define BL32_LIMIT			(ARM_AP_TZC_DRAM1_BASE +	\
 						ARM_AP_TZC_DRAM1_SIZE)
+# else
+/*
+ * Assume for prototyping that the OP-TEE partition will reside in the Trusted
+ * DRAM on the FVP.
+ */
+#  define BL32_BASE			PLAT_ARM_TRUSTED_DRAM_BASE
+#  define BL32_LIMIT			(PLAT_ARM_TRUSTED_DRAM_BASE	\
+						+ (UL(1) << 21))
+# endif
 # elif ARM_BL31_IN_DRAM
 #  define TSP_SEC_MEM_BASE		(ARM_AP_TZC_DRAM1_BASE +	\
 						PLAT_ARM_MAX_BL31_SIZE)

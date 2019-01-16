@@ -129,6 +129,13 @@ struct sp_rd_sect_mem_region {
 	 */
 	uint64_t size;
 
+#if ENABLE_SPCI_ALPHA2
+	/*
+	 * SP specific memory attribute.
+	 */
+	uint32_t imp_def_attr;
+#endif
+
 	/*
 	 * Pointer to next memory region (or NULL if this is the last one).
 	 */

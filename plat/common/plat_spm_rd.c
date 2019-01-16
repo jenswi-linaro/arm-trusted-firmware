@@ -96,7 +96,9 @@ static void rd_parse_memory_region(struct sp_rd_sect_mem_region *rdmem,
 	rc |= fdtw_read_cells(fdt, node, "attr", 1, &rdmem->attr);
 	rc |= fdtw_read_cells(fdt, node, "base", 2, &rdmem->base);
 	rc |= fdtw_read_cells(fdt, node, "size", 2, &rdmem->size);
-
+#if ENABLE_SPCI_ALPHA2
+	rc |= fdtw_read_cells(fdt, node, "imp_def_attr", 1, &rdmem->imp_def_attr);
+#endif
 	size_t len = strlcpy(rdmem->name, name, RD_MEM_REGION_NAME_LEN);
 
 	if (len >= RD_MEM_REGION_NAME_LEN) {
@@ -108,7 +110,9 @@ static void rd_parse_memory_region(struct sp_rd_sect_mem_region *rdmem,
 	VERBOSE("  attr: 0x%x\n", rdmem->attr);
 	VERBOSE("  base: 0x%llx\n", rdmem->base);
 	VERBOSE("  size: 0x%llx\n", rdmem->size);
-
+#if ENABLE_SPCI_ALPHA2
+	VERBOSE("  imp_def_attr: 0x%x\n", rdmem->imp_def_attr);
+#endif
 	if (rc) {
 		ERROR("Failed to read mem_region node elements.\n");
 		panic();

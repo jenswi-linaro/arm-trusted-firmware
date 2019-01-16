@@ -305,6 +305,7 @@ void __init arm_bl31_plat_arch_setup(void)
 #endif
 #if ENABLE_SPCI_ALPHA2
 		ARM_MAP_SPCI_MSG_BUFS_SEC,
+		ARM_MAP_SPCI_MSG_BUFS_NSEC,
 #endif
 		{0}
 	};

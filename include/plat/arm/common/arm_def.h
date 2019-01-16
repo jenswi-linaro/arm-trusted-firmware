@@ -284,7 +284,11 @@
  * The max number of regions like RO(code), coherent and data required by
  * different BL stages which need to be mapped in the MMU.
  */
+#if ENABLE_SPCI_ALPHA2
+#define ARM_BL_REGIONS			10
+#else
 #define ARM_BL_REGIONS			5
+#endif
 
 #define MAX_MMAP_REGIONS		(PLAT_ARM_MMAP_ENTRIES +	\
 					 ARM_BL_REGIONS)

@@ -26,8 +26,10 @@ SPM_SOURCES	:=	$(addprefix services/std_svc/spm/,	\
 
 INCLUDES	+=	${SPRT_LIB_INCLUDES}
 
+ifneq (${ENABLE_SPCI_ALPHA2},1)
 # Force SMC Calling Convention 2 when using SPM
 SMCCC_MAJOR_VERSION	:=	2
+endif
 
 # Let the top-level Makefile know that we intend to include a BL32 image
 NEED_BL32		:=	yes

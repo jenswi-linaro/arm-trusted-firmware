@@ -63,6 +63,16 @@
 
 #endif /* SPM_DEPRECATED */
 
+#if ENABLE_SPCI_ALPHA2
+/* The macros below are used to identify SPM calls from the SMC function ID */
+#define SPM_FID_MASK			U(0xffff)
+#define SPM_FID_MIN_VALUE		U(0x60)
+#define SPM_FID_MAX_VALUE		U(0x7f)
+#define is_spm_fid(_fid)						\
+		((((_fid) & SPM_FID_MASK) >= SPM_FID_MIN_VALUE) &&	\
+		 (((_fid) & SPM_FID_MASK) <= SPM_FID_MAX_VALUE))
+#endif
+
 #ifndef __ASSEMBLY__
 
 #include <stdint.h>

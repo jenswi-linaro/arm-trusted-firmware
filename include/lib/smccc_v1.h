@@ -12,6 +12,14 @@
 #endif
 
 /*******************************************************************************
+ * Bit definitions inside w7 as per the SMC calling convention
+ ******************************************************************************/
+#define CLIENT_ID_SHIFT			U(0)
+#define CLIENT_ID_MASK			U(0xff)
+#define SEC_OS_ID_SHIFT			U(16)
+#define SEC_OS_ID_MASK			U(0xff)
+
+/*******************************************************************************
  * Bit definitions inside the function id as per the SMC calling convention
  ******************************************************************************/
 #define FUNCID_TYPE_SHIFT		U(31)

@@ -384,7 +384,7 @@ smc_handler64:
 	tbz	x0, #(FUNCID_NAMESPACE_SHIFT + 1), compat_or_vendor
 
 	/* Namespace is b'10 (SPRT) or b'11 (SPCI) */
-#if ENABLE_SPM
+#if ENABLE_SPM && !ENABLE_SPCI_ALPHA2
 	tst	x0, #(1 << FUNCID_NAMESPACE_SHIFT)
 	adr	x15, spci_smc_handler
 	adr	x16, sprt_smc_handler

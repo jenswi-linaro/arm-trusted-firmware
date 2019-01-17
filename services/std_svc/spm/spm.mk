@@ -13,6 +13,14 @@ endif
 
 include lib/sprt/sprt_host.mk
 
+ifeq (${ENABLE_SPCI_ALPHA2},1)
+SPM_SOURCES	+=	$(addprefix services/std_svc/spm/,	\
+			${ARCH}/spm_helpers.S			\
+			spci_alpha2.c				\
+			spm_main.c				\
+			spm_xlat.c)
+
+else
 SPM_SOURCES	:=	$(addprefix services/std_svc/spm/,	\
 			${ARCH}/spm_helpers.S			\
 			${ARCH}/spm_shim_exceptions.S		\
@@ -23,6 +31,7 @@ SPM_SOURCES	:=	$(addprefix services/std_svc/spm/,	\
 			spm_xlat.c				\
 			sprt.c)					\
 			${SPRT_LIB_SOURCES}
+endif
 
 INCLUDES	+=	${SPRT_LIB_INCLUDES}
 

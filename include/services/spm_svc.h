@@ -79,7 +79,7 @@
 
 int32_t spm_setup(void);
 
-#if SPM_DEPRECATED
+#if SPM_DEPRECATED || ENABLE_SPCI_ALPHA2
 
 uint64_t spm_smc_handler(uint32_t smc_fid,
 			 uint64_t x1,

@@ -22,7 +22,9 @@
 #include <plat/common/platform.h>
 #include <services/sprt_svc.h>
 #include <smccc_helpers.h>
-
+#if ENABLE_SPCI_ALPHA2
+#include <services/spci_alpha2.h>
+#endif
 #include "spm_private.h"
 
 /*******************************************************************************
@@ -187,11 +189,13 @@ uint64_t spm_sp_synchronous_entry(sp_context_t *sp_ctx, int can_preempt)
 	tlbivmalle1();
 	dsbish();
 
+#if !ENABLE_SPCI_ALPHA2
 	if (can_preempt == 1) {
 		enable_intr_rm_local(INTR_TYPE_NS, SECURE);
 	} else {
 		disable_intr_rm_local(INTR_TYPE_NS, SECURE);
 	}
+#endif
 
 	/* Enter Secure Partition */
 	rc = spm_secure_partition_enter(&sp_ctx->c_rt_ctx);
@@ -222,6 +226,7 @@ __dead2 void spm_sp_synchronous_exit(uint64_t rc)
 	panic();
 }
 
+#if !ENABLE_SPCI_ALPHA2
 /*******************************************************************************
  * This function is the handler registered for Non secure interrupts by the SPM.
  * It validates the interrupt and upon success arranges entry into the normal
@@ -235,6 +240,7 @@ static uint64_t spm_ns_interrupt_handler(uint32_t id, uint32_t flags,
 
 	spm_sp_synchronous_exit(SPM_SECURE_PARTITION_PREEMPTED);
 }
+#endif
 
 /*******************************************************************************
  * Jump to each Secure Partition for the first time.
@@ -257,7 +263,11 @@ static int32_t spm_init(void)
 		ctx->state = SP_STATE_RESET;
 
 		rc = spm_sp_synchronous_entry(ctx, 0);
+#if ENABLE_SPCI_ALPHA2
+		if (rc == SPCI_SUCCESS) {
+#else
 		if (rc != SPRT_YIELD_AARCH64) {
+#endif
 			ERROR("Unexpected return value 0x%llx\n", rc);
 			panic();
 		}
@@ -273,6 +283,333 @@ static int32_t spm_init(void)
 /*******************************************************************************
  * Initialize contexts of all Secure Partitions.
  ******************************************************************************/
+#if ENABLE_SPCI_ALPHA2
+static void spci_msg_buf_init(spci_buf_t **msg_buf_ptr,
+			      buf_t *buf_ptr)
+{
+	spci_buf_hdr_t *msg_buf_hdr;
+
+	VERBOSE("Message buffer : 0x%lx \n", (unsigned long) buf_ptr);
+
+	/* Zero the buffer memory */
+	memset((void *) buf_ptr, 0, PAGE_SIZE);
+
+	/* Assign reference to this buffer for this SP */
+	*msg_buf_ptr = (spci_buf_t *) buf_ptr;
+
+	/* Initialise the buffer header */
+	msg_buf_hdr = &(*msg_buf_ptr)->hdr;
+	msg_buf_hdr->state = SPCI_BUF_STATE_EMPTY;
+	msg_buf_hdr->page_count = sizeof(buf_t) >> PAGE_SIZE_SHIFT ;
+	memcpy((void *) msg_buf_hdr->signature,
+	       SPCI_BUF_SIGNATURE,
+	       MAX_SIG_LENGTH);
+
+	/*
+	 * Flush the buffer memory so that the target SP can see the buffer
+	 * header when its MMU is not enabled.
+	 */
+	flush_dcache_range((uintptr_t) buf_ptr, PAGE_SIZE);
+
+	return;
+}
+
+static void spci_msg_bufs_init(sp_context_t *ctx, unsigned int ss,
+			       rxtx_buf_ptr rxtx_buf_pool_start)
+{
+	uint16_t id;
+	spci_buf_t **msg_buf_ptr;
+
+
+	assert(ctx != NULL);
+	assert(ctx->sp_id < PLAT_SPM_MAX_PARTITIONS);
+	assert(rxtx_buf_pool_start != 0UL);
+
+	id = ctx->sp_id;
+
+	/* Assign and initialise a RX buffer for this partition */
+	msg_buf_ptr = &ctx->msg_bufs[ss][SPCI_BUF_RX];
+	spci_msg_buf_init(msg_buf_ptr,
+			  &rxtx_buf_pool_start[id]->buf[SPCI_BUF_RX]);
+
+
+	/* Assign and initialise a TX buffer for this partition */
+	msg_buf_ptr = &ctx->msg_bufs[ss][SPCI_BUF_TX];
+	spci_msg_buf_init(msg_buf_ptr,
+			  &rxtx_buf_pool_start[id]->buf[SPCI_BUF_TX]);
+
+	return;
+}
+
+void mem_reg_desc_init(spci_mem_reg_desc_t *desc,
+			      uint64_t addr,
+			      uint16_t pg_cnt,
+			      uint32_t attr)
+{
+	assert(desc != NULL);
+
+	VERBOSE("desc: 0x%lx, offset of : 0x%lx\n", (unsigned long) desc,
+		offsetof(spci_msg_sp_init_t, mem_regs));
+
+	desc->address = addr;
+	desc->page_count = pg_cnt;
+	desc->attributes = attr;
+
+	return;
+}
+
+void init_msg_mem_reg_add(spci_msg_sp_init_t *msg,
+				 uint64_t addr,
+				 uint16_t pg_cnt,
+				 uint32_t attr)
+{
+	spci_mem_reg_desc_t *desc;
+
+	assert(msg != NULL);
+
+	VERBOSE("msg: 0x%lx, offset of : 0x%lx\n", (unsigned long) msg,
+		offsetof(spci_msg_sp_init_t, mem_regs));
+
+	desc = msg->mem_regs;
+
+	mem_reg_desc_init(&desc[msg->mem_reg_count], addr, pg_cnt, attr);
+	msg->mem_reg_count++;
+
+	return;
+}
+
+static void init_msg_mem_reg_dump(spci_msg_sp_init_t *msg)
+{
+	spci_mem_reg_desc_t *desc;
+	unsigned int ctr;
+
+	assert(msg != NULL);
+
+	desc = msg->mem_regs;
+
+	for (ctr = 0; ctr < msg->mem_reg_count; ctr++) {
+		VERBOSE("[%d]: sp_mem_reg = %p\n", ctr, (void *) &desc[ctr]);
+		VERBOSE("|->address       = %p\n", (void *) desc[ctr].address);
+		VERBOSE("|->page_count    = 0x%x\n", desc[ctr].page_count);
+		VERBOSE("|->attr          = 0x%x\n", desc[ctr].attributes);
+	}
+
+	return;
+}
+
+static void spci_init_msg_create(spci_buf_t *rx_buf_ptr, uint16_t sp_id)
+{
+	spci_msg_hdr_t *sp_init_msg_hdr;
+	spci_arch_msg_hdr_t *sp_init_msg_arch_hdr;
+	spci_msg_sp_init_t *sp_init_msg;
+	struct sp_rd_sect_mem_region *rdmem;
+	sp_context_t *ctx;
+	unsigned int ctr0, ctr1;
+	uint64_t addr;
+	uint16_t pg_cnt;
+	uint32_t attr;
+
+	/* Populate the common message header in RX buffer*/
+	sp_init_msg_hdr = (spci_msg_hdr_t *) &rx_buf_ptr->buf;
+	sp_init_msg_hdr->version =
+		SPCI_MSG_VER(SPCI_MSG_VER_MAJ, SPCI_MSG_VER_MIN);
+	sp_init_msg_hdr->flags =
+		SPCI_MSG_TYPE(SPCI_MSG_TYPE_ARCH);
+	sp_init_msg_hdr->target_sp = sp_id;
+
+	/* Populate the arch. message header */
+	sp_init_msg_arch_hdr =
+		(spci_arch_msg_hdr_t *) sp_init_msg_hdr->payload;
+	sp_init_msg_arch_hdr->type =
+		SPCI_ARCH_MSG_TYPE(SPCI_ARCH_MSG_TYPE_SP_INIT);
+
+	/* Populate the SP init. message header */
+	sp_init_msg =(spci_msg_sp_init_t *)
+		sp_init_msg_arch_hdr->payload;
+	sp_init_msg->version = INIT_MSG_VER(INIT_MSG_VER_MAJ,
+					    INIT_MSG_VER_MIN);
+	sp_init_msg->mem_reg_count = 0;
+
+	/*
+	 * Populate regions specified in SP's resource
+	 * description.
+	 * TODO: Do a bounds check before copying each region.
+	 */
+	ctx = &sp_ctx_array[sp_id];
+	for (rdmem = ctx->rd.mem_region; rdmem != NULL; rdmem = rdmem->next) {
+		/* Size of memory region must be page aligned */
+		assert ((rdmem->size & (PAGE_SIZE - 1)) == 0U);
+
+		addr = rdmem->base;
+		pg_cnt = (rdmem->size) >> PAGE_SIZE_SHIFT;
+		attr = SPCI_MEM_REG_IMP(rdmem->imp_def_attr);
+
+		VERBOSE("RD mem region addr: 0x%llx \n", addr);
+		VERBOSE("RD mem region attr: 0x%x \n", attr);
+		VERBOSE("RD mem region pgcn: 0x%x \n", pg_cnt);
+
+		/* Copy region attributes into message */
+		init_msg_mem_reg_add(sp_init_msg, addr, pg_cnt, attr);
+	}
+
+	/* Describe secure and non-secure RX/TX buffers for this partition */
+	for (ctr0 = 0; ctr0 < SPCI_MAX_SEC_STATES; ctr0++)
+		for (ctr1 = 0; ctr1 < SPCI_MAX_BUFS; ctr1++) {
+			spci_buf_t *buf;
+
+			buf = ctx->msg_bufs[ctr0][ctr1];
+			if (!buf)
+				continue;
+			addr = (uint64_t) buf;
+			pg_cnt = buf->hdr.page_count;
+			attr = SPCI_MEM_REG_ARCH(ctr1, ctr0,		\
+						 SPCI_MEM_REG_ARCH_GRAN_4K);
+
+			VERBOSE("SPCI buf addr: 0x%llx \n", addr);
+			VERBOSE("SPCI buf attr: 0x%x \n", attr);
+			VERBOSE("SPCI buf pgcn: 0x%x \n", pg_cnt);
+
+			init_msg_mem_reg_add(sp_init_msg, addr, pg_cnt, attr);
+		}
+
+	init_msg_mem_reg_dump(sp_init_msg);
+
+	sp_init_msg_hdr->length = sizeof(spci_arch_msg_hdr_t);
+	sp_init_msg_hdr->length += sizeof(spci_msg_sp_init_t);
+	sp_init_msg_hdr->length += sp_init_msg->mem_reg_count *
+		sizeof(spci_mem_reg_desc_t);
+	VERBOSE("SP init message length = 0x%x bytes \n",
+		sp_init_msg_hdr->length);
+
+	rx_buf_ptr->hdr.state = SPCI_BUF_STATE_FULL;
+
+	/*
+	 * Flush the message contents so that the target SP can see it without
+	 * the MMU enabled
+	 */
+	flush_dcache_range((uintptr_t) rx_buf_ptr,
+			   sizeof(spci_buf_t) + sp_init_msg_hdr->length);
+
+	return;
+}
+
+int32_t spm_setup(void)
+{
+	int rc;
+	sp_context_t *ctx;
+	void *rd_base;
+	size_t rd_size;
+	unsigned int i = 0U;
+	entry_point_info_t *sp_ep_info;
+	uintptr_t rd_base_align;
+	uintptr_t rd_size_align;
+	uint32_t ep_attr;
+
+	sp_ep_info = bl31_plat_get_next_image_ep_info(SECURE);
+	if (!sp_ep_info) {
+		WARN("No SP provided by BL2 boot loader, Booting device"
+			" without SP initialization. SMC`s destined for SP"
+			" will return SMC_UNK\n");
+		return 1;
+	}
+
+	/* Under no circumstances will this parameter be 0 */
+	assert (sp_ep_info->pc != 0U);
+
+	/*
+	 * Check if BL32 ep_info has a reference to 'tos_fw_config' in which
+	 * case there is a S-EL1 SP instead of multiple S-EL0 SPs.
+	 */
+	if (sp_ep_info->args.arg0 == 0U || sp_ep_info->args.arg2 == 0U) {
+		ERROR("Invalid or absent 'tos_fw_config' \n");
+		panic();
+	}
+
+	/* Obtain whereabouts of BL32 resource description */
+	rd_base = (void *) sp_ep_info->args.arg0;
+	rd_size = sp_ep_info->args.arg2;
+
+	rd_base_align = page_align((uintptr_t) rd_base, DOWN);
+	rd_size_align = page_align((uintptr_t) rd_size, UP);
+
+	/* Map the RD memory in the SPM translation regime first */
+	VERBOSE("RD base : 0x%lx \n", rd_base_align);
+	VERBOSE("RD size : 0x%lx \n", rd_size_align);
+	rc = mmap_add_dynamic_region((unsigned long long) rd_base_align,
+				     (uintptr_t) rd_base_align,
+				     rd_size_align,
+				     MT_RO_DATA);
+	if (rc < 0) {
+		ERROR("Error while mapping RD blob (%d).\n", rc);
+		panic();
+	}
+
+	ctx = &sp_ctx_array[i];
+
+	/* Size of RD can be read from DTB itself */
+	rc = plat_spm_sp_rd_load(&ctx->rd,
+				 (void *) sp_ep_info->args.arg0,
+				 0);
+	if (rc < 0) {
+		ERROR("Error while loading RD blob.\n");
+		panic();
+	}
+
+	/* Assign an identity to this partition */
+	ctx->sp_id = i;
+
+	/* Initialize the secure RX/TX buffers for this SP */
+	VERBOSE("SPCI buffer pool base : 0x%lx \n", SPCI_MSG_BUFS_SEC_START);
+	spci_msg_bufs_init(ctx, SECURE,
+			   (rxtx_buf_ptr) SPCI_MSG_BUFS_SEC_START);
+
+	/* Initialize the non-secure RX/TX buffers for this SP */
+	VERBOSE("SPCI buffer pool base : 0x%llx \n", SPCI_MSG_BUFS_NSEC_START);
+	spci_msg_bufs_init(ctx, !SECURE,
+			   (rxtx_buf_ptr) SPCI_MSG_BUFS_NSEC_START);
+
+	if (rc < 0) {
+		ERROR("Error (0x%x) in secure msg buf init.\n", rc);
+		panic();
+	}
+
+	VERBOSE("Creating SP init message\n");
+	spci_init_msg_create(ctx->msg_bufs[SECURE][SPCI_BUF_RX], i);
+
+	/* Initialise an entrypoint to set up the CPU context */
+	ep_attr = SECURE | EP_ST_ENABLE;
+	if (read_sctlr_el3() & SCTLR_EE_BIT)
+		ep_attr |= EP_EE_BIG;
+	SET_PARAM_HEAD(sp_ep_info, PARAM_EP, VERSION_1, ep_attr);
+	assert (sp_ep_info->pc = BL32_BASE);
+	sp_ep_info->spsr = SPSR_64(MODE_EL1, MODE_SP_ELX,
+				   DISABLE_ALL_EXCEPTIONS);
+
+	zeromem(&sp_ep_info->args, sizeof(sp_ep_info->args));
+
+	/*
+	 * SPCI_MSG_RECV returns SUCCESS with a message in the
+	 * secure RX buffer
+	 */
+	sp_ep_info->args.arg0 = SPCI_SUCCESS;
+	sp_ep_info->args.arg1 = (u_register_t) ctx->msg_bufs[SECURE][SPCI_BUF_RX];
+
+	/*
+	 * Initialise S-EL1 SP context with this entry point
+	 * information
+	 */
+	cm_setup_context(&(ctx->cpu_ctx), sp_ep_info);
+
+	ctx->is_present = 1;
+
+	INFO("S-EL1 Secure Partition %u setup done.\n", i);
+
+	/* Register init function for deferred init.  */
+	bl31_register_bl32_init(&spm_init);
+
+	return 0;
+}
+#else
 int32_t spm_setup(void)
 {
 	int rc;
@@ -356,3 +693,4 @@ int32_t spm_setup(void)
 
 	return 0;
 }
+#endif	/* ENABLE_SPCI_ALPHA2 */

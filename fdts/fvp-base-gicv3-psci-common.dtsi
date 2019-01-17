@@ -25,6 +25,17 @@
 		serial3 = &v2m_serial3;
 	};
 
+	firmware {
+		optee {
+			compatible = "linaro,optee-tz";
+			method = "spci";
+		};
+	};
+
+	spci {
+		compatible = "arm,spci-alpha2";
+	};
+
 	psci {
 		compatible = "arm,psci-1.0", "arm,psci-0.2", "arm,psci";
 		method = "smc";

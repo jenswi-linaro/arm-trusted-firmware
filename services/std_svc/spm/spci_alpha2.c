@@ -553,6 +553,13 @@ uint64_t spm_smc_handler(uint32_t smc_fid, uint64_t x1, uint64_t x2,
 		ret = spci_msg_send(x1, ns, SMC_GET_GP(handle, CTX_GPREG_X7),
 				    &msg_target);
 
+		/*
+		 * If the message was sent successfully then tell the Normal
+		 * world scheduler that a scheduling decision must be made.
+		 */
+		if (ret == SPCI_SUCCESS && !ns)
+			return spci_run_end(SPCI_RUN_COMP_REASON_MSG, msg_target);
+
 		SMC_RET1(handle, ret);
 
 	case SPCI_MSG_SEND_RECV:

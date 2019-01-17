@@ -534,6 +534,15 @@ uint64_t spm_smc_handler(uint32_t smc_fid, uint64_t x1, uint64_t x2,
 		blk = x1 >> SPCI_MSG_RECV_ATTRS_SHIFT;
 		blk &= SPCI_MSG_RECV_ATTRS_MASK;
 		ret = spci_msg_recv(blk);
+
+		/*
+		 * If SPCI_MESG_RECV was invoked in polling mode then success
+		 * indicates a return back to the SP. Else it indicates a return
+		 * back to the Normal world.
+		 */
+		if ((ret == SPCI_SUCCESS) && (blk == SPCI_MSG_RECV_ATTRS_BLK))
+			return spci_run_end(SPCI_RUN_COMP_REASON_DONE, 0);
+
 		SMC_RET1(handle, ret);
 	}
 	case SPCI_MSG_BUF_LIST_EXCHANGE:

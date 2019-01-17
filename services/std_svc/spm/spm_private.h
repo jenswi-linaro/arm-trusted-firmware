@@ -104,6 +104,13 @@ typedef struct sp_context {
 #endif
 } sp_context_t;
 
+#if ENABLE_SPCI_ALPHA2
+typedef struct buf_desc {
+	uint64_t pa;
+	uint64_t va;
+} buf_desc_t;
+#endif
+
 /* Functions used to enter/exit a Secure Partition synchronously */
 uint64_t spm_sp_synchronous_entry(sp_context_t *sp_ctx, int can_preempt);
 __dead2 void spm_sp_synchronous_exit(uint64_t rc);

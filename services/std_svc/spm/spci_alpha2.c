@@ -161,6 +161,211 @@ static int spci_msg_buf_list_exchange(uint64_t address,
 	return ret;
 }
 
+/*
+ * Return the TX of source id in x7 for a TX buffer.
+ * Return the RX of target id in x7 for a RX buffer.
+ */
+static spci_buf_t *spci_msg_buf_ptr_get(unsigned int buf_type,
+					uint32_t attrs,
+					unsigned int target_ss,
+					unsigned int source_ss,
+					uint64_t x7)
+{
+	unsigned short source_id, target_id;
+	sp_context_t *ctx;
+	unsigned int linear_id, msg_loc;
+
+	/*
+	 * TODO: Assume source and target ids is 0. Other bits are unused and
+	 * MBZ
+	 */
+	assert (x7 == 0);
+
+	/*
+	 * TODO: It is assumed that there is a single SP (OP-TEE) and single
+	 * client (OS) in the Normal world. Both have an id = 0. The security
+	 * state bit is used to distinguish which is which. In case of a TX
+	 * buffer, the identity of its owner is determined through the client id
+	 * bits as per the SMC calling convention. For an RX buffer, the
+	 * identity of its owner is specified in the Secure OS ID bits.
+	 */
+	source_id = x7 >> CLIENT_ID_SHIFT;
+	source_id &= CLIENT_ID_MASK;
+
+	if (source_id != 0) {
+		ERROR("Invalid source id\n");
+		return NULL;
+	}
+
+	target_id = x7 >> SEC_OS_ID_SHIFT;
+	target_id &= SEC_OS_ID_MASK;
+
+	if (target_id != 0) {
+		ERROR("Invalid target id\n");
+		return NULL;
+	}
+
+	/* Obtain reference to a RX/TX buffer based upon specified parameters */
+	switch (buf_type) {
+	case SPCI_BUF_TX:
+
+		/*
+		 * If the client is a SP then determine if a pointer to the
+		 * secure or non-secure TX buffer must be returned.
+		 */
+		if (source_ss == SECURE) {
+			/* Get context of the SP in use by this CPU. */
+			linear_id = plat_my_core_pos();
+			ctx = spm_cpu_get_sp_ctx(linear_id);
+
+			/* These should match */
+			if (source_id != ctx->sp_id) {
+				WARN("Mismatched client and SP ids \n");
+				return NULL;
+			}
+
+			msg_loc = attrs >> SPCI_MSG_SEND_ATTRS_MSGLOC_SHIFT;
+			msg_loc &= SPCI_MSG_SEND_ATTRS_MSGLOC_MASK;
+
+			return ctx->msg_bufs[msg_loc][buf_type];
+
+		}
+
+		/* TX buffer of normal world client is easy */
+		return (spci_buf_t *) ns_client_buf_desc[source_id][buf_type].va;
+
+	case SPCI_BUF_RX:
+		/*
+		 * If the target is a SP then determine if pointer to the
+		 * secure or non-secure RX buffer must be returned.
+		 */
+		if (target_ss == SECURE) {
+			/*
+			 * Now this makes the head spin! If the target is a SP,
+			 * then the security state of its RX buffer depends upon
+			 * the source security state.
+			 */
+			msg_loc = (source_ss == SECURE) ?
+				SPCI_MSG_SEND_ATTRS_MSGLOC_SEC:
+				SPCI_MSG_SEND_ATTRS_MSGLOC_NSEC;
+
+			ctx = &sp_ctx_array[target_id];
+			return ctx->msg_bufs[msg_loc][buf_type];
+		}
+
+		/* RX buffer of normal world target is easy */
+		return (spci_buf_t *) ns_client_buf_desc[target_id][buf_type].va;
+
+	default:
+		ERROR("Invalid SPCI message buffer type (%u)\n", buf_type);
+		return NULL;
+	}
+}
+
+/* Send a message to a client or SP */
+static int spci_msg_send(uint32_t attributes,
+			 unsigned int ns,
+			 uint64_t x7,
+			 uint16_t *msg_target)
+{
+	spci_buf_t *rx_buf, *tx_buf;
+	spci_msg_hdr_t *msg_hdr;
+	void *tmp;
+	uint32_t id, msg_len;
+
+	/* Check against garbage security state parameter */
+	assert ((ns == SECURE) || (ns == !SECURE));
+
+	/*
+	 * If the caller/source is non-secure then target must be secure.
+	 * TODO: Assume that if caller/source is secure then target must be
+	 * non-secure. In future it could be another SP as well.
+	 */
+	tx_buf = spci_msg_buf_ptr_get(SPCI_BUF_TX, attributes, !ns, ns, x7);
+	if (tx_buf == NULL) {
+		ERROR("Unable to find TX buffer \n");
+		return SPCI_INVALID_PARAMETER;
+	}
+
+	VERBOSE("%s: Src TX 0x%lx \n", __FUNCTION__, (unsigned long) tx_buf);
+
+	/* Get the common message header */
+	tmp = (void *) tx_buf->buf;
+	msg_hdr = (spci_msg_hdr_t *) tmp;
+
+	/* Check message length */
+	if (msg_hdr->length == 0) {
+		ERROR("Invalid zero legnth message\n");
+		return SPCI_INVALID_PARAMETER;
+	}
+
+	/* Get the message target from x7 */
+	id = x7 >> SEC_OS_ID_SHIFT;
+	id &= SEC_OS_ID_MASK;
+
+	/* Check if target in x7 matches the target in the message */
+	if (msg_hdr->target_sp != id) {
+		ERROR("Mismatched target ids in message and w7\n");
+		return SPCI_INVALID_PARAMETER;
+	}
+
+	*msg_target = id;
+
+	/* Get the message source from x7 */
+	id = x7 >> CLIENT_ID_SHIFT;
+	id &= CLIENT_ID_MASK;
+
+	/* Check if source in x7 matches the source in the message */
+	if (msg_hdr->source_sp != id) {
+		ERROR("Mismatched source ids in message and w7\n");
+		return SPCI_INVALID_PARAMETER;
+	}
+
+	/* Ensure buffer is full */
+	if (tx_buf->hdr.state != SPCI_BUF_STATE_FULL) {
+		ERROR("Invalid TX buffer state\n");
+		return SPCI_INVALID_PARAMETER;
+	}
+
+	/*
+	 * If the caller/source is non-secure then target must be secure.
+	 * TODO: Assume that if caller/source is secure then target must be
+	 * non-secure. In future it could be another SP as well.
+	 */
+	rx_buf = spci_msg_buf_ptr_get(SPCI_BUF_RX, attributes, !ns, ns, x7);
+	if (rx_buf == NULL) {
+		ERROR("Unable to find TX buffer \n");
+		return SPCI_INVALID_PARAMETER;
+	}
+
+	VERBOSE("%s: Tgt RX 0x%lx \n", __FUNCTION__, (unsigned long) rx_buf);
+
+	/* Ensure RX buffer is empty */
+	if (rx_buf->hdr.state != SPCI_BUF_STATE_EMPTY) {
+		WARN("Busy %s RX buffer state\n", ns ? "secure": "non-secure");
+		return SPCI_BUSY;
+	}
+
+	/* Ensure message length <= space available in message buffer */
+	msg_len = msg_hdr->length + sizeof(*msg_hdr);
+	if (msg_len > (PAGE_SIZE - sizeof(spci_buf_t))) {
+		ERROR("Invalid message length\n");
+		return SPCI_INVALID_PARAMETER;
+	}
+
+	/* Copy message to from TX to RX */
+	memcpy((void *) rx_buf->buf, (void *) msg_hdr, msg_len);
+
+	/* Zero message in TX buffer */
+	memset((void *) msg_hdr, 0, msg_len);
+
+	/* Mark TX as empty and RX as full */
+	rx_buf->hdr.state = SPCI_BUF_STATE_FULL;
+	tx_buf->hdr.state = SPCI_BUF_STATE_EMPTY;
+
+	return SPCI_SUCCESS;
+}
+
 /* Receive a message from a client or SP */
 static int spci_msg_recv(uint32_t attributes)
 {
@@ -195,7 +400,12 @@ uint64_t spm_smc_handler(uint32_t smc_fid, uint64_t x1, uint64_t x2,
 			 uint64_t x3, uint64_t x4, void *cookie, void *handle,
 			 uint64_t flags)
 {
+	unsigned int ns;
 	int32_t ret;
+	uint16_t msg_target = 0;
+
+	/* Determine which security state this SMC originated from */
+	ns = is_caller_non_secure(flags);
 
 	switch (smc_fid) {
 
@@ -214,6 +424,12 @@ uint64_t spm_smc_handler(uint32_t smc_fid, uint64_t x1, uint64_t x2,
 	}
 	case SPCI_MSG_BUF_LIST_EXCHANGE:
 		ret = spci_msg_buf_list_exchange(x1, x2);
+		SMC_RET1(handle, ret);
+
+	case SPCI_MSG_SEND:
+		ret = spci_msg_send(x1, ns, SMC_GET_GP(handle, CTX_GPREG_X7),
+				    &msg_target);
+
 		SMC_RET1(handle, ret);
 
 	default:

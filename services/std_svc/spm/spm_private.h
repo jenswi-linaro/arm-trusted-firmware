@@ -111,6 +111,8 @@ typedef struct buf_desc {
 } buf_desc_t;
 #endif
 
+extern sp_context_t sp_ctx_array[PLAT_SPM_MAX_PARTITIONS];
+
 /* Functions used to enter/exit a Secure Partition synchronously */
 uint64_t spm_sp_synchronous_entry(sp_context_t *sp_ctx, int can_preempt);
 __dead2 void spm_sp_synchronous_exit(uint64_t rc);

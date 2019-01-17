@@ -262,6 +262,79 @@ static spci_buf_t *spci_msg_buf_ptr_get(unsigned int buf_type,
 	}
 }
 
+/* Schedule a SP in response to an SPCI_RUN from Normal world */
+static int spci_run_start(uint32_t target_info, uint64_t x7)
+{
+	int32_t ret;
+	unsigned short source_id, target_id;
+	sp_context_t *ctx;
+	unsigned int linear_id = plat_my_core_pos();
+
+	/*
+	 * TODO: It is assumed that there is a single SP (OP-TEE) and single
+	 * client (OS) in the Normal world. Both have an id = 0. A quirk of the
+	 * specification is that the target is specified in both x7 and
+	 * target_info. In future, the latter will be used to identify the
+	 * target SP vCPU as well. Currently it is assumed each vCPU is pinned
+	 * and identity mapped to the pCPU.
+	 */
+	source_id = x7 >> CLIENT_ID_SHIFT;
+	source_id &= CLIENT_ID_MASK;
+
+	if (source_id != 0) {
+		ERROR("Invalid source id\n");
+		return SPCI_INVALID_PARAMETER;
+	}
+
+	target_id = x7 >> SEC_OS_ID_SHIFT;
+	target_id &= SEC_OS_ID_MASK;
+
+	if (target_id != 0) {
+		ERROR("Invalid target id\n");
+		return SPCI_INVALID_PARAMETER;
+	}
+
+	/* Inspite of the spec. quirk, it is worth ensuring the targets match */
+	if (target_id != ((target_info >> SEC_OS_ID_SHIFT) & SEC_OS_ID_MASK)) {
+		ERROR("Mismatched SP ids\n");
+		return SPCI_INVALID_PARAMETER;
+	}
+
+	/*
+	 * All aboard! Lets save the non-secure state and restore the secure
+	 * state.
+	 * TODO: In the absence of S-EL2, it is assumed that re-entry into a SP
+	 * will be done by completing an earlier SPCI_MESG_RECV or
+	 * SPCI_MESG_SEND_RECV call.
+	 */
+	ctx = &sp_ctx_array[target_id];
+
+	assert (ctx != NULL);
+	assert (ctx->state == SP_STATE_IDLE);
+
+	/* This SP is about to become busy */
+	sp_state_set(ctx, SP_STATE_BUSY);
+
+	/* Save the Normal world context */
+	cm_el1_sysregs_context_save(NON_SECURE);
+
+	/* Assign the context of the SP to this CPU */
+	spm_cpu_set_sp_ctx(linear_id, ctx);
+	cm_set_context(&(ctx->cpu_ctx), SECURE);
+
+	/* Restore the context assigned above */
+	cm_el1_sysregs_context_restore(SECURE);
+	cm_set_next_eret_context(SECURE);
+
+	/*
+	 * Set 'ret' to indicate status upon completion of a SPCI_MSG_RECV or
+	 * SPCI_MESG_SEND_RECV. Message location will always be the non-secure
+	 * RX buffer of the SP.
+	 */
+	ret = SPCI_MSG_RECV_MSGLOC_NSEC << SPCI_MSG_RECV_MSGLOC_SHIFT;
+	SMC_RET4(cm_get_context(SECURE), ret, 0, 0, 0);
+}
+
 /* Send a message to a client or SP */
 static int spci_msg_send(uint32_t attributes,
 			 unsigned int ns,
@@ -431,6 +504,11 @@ uint64_t spm_smc_handler(uint32_t smc_fid, uint64_t x1, uint64_t x2,
 				    &msg_target);
 
 		SMC_RET1(handle, ret);
+
+	case SPCI_RUN:
+		if (!ns)
+			break;
+		return spci_run_start(x1, SMC_GET_GP(handle, CTX_GPREG_X7));
 
 	default:
 		break;

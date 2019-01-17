@@ -1,0 +1,93 @@
+/dts-v1/;
+
+/ {
+	compatible = "arm,sp_rd";
+
+	attribute {
+		version = <0x1>;
+		sp_type = <0x1>;
+		pe_mpidr = <0x0>;
+		runtime_el = <0x1>;
+		exec_type = <0x1>;
+		panic_policy = <0x1>;
+		xlat_granule = <0x0>;
+		binary_size = <0x0>;
+		load_address = <0x0 0x6000000>;
+		entrypoint = <0x0 0x6000000>;
+	};
+
+	memory_regions {
+
+		TEE_RAM_RX {
+			str = "TEE_RAM_RX";
+			base = <0x0 0x6000000>;
+			size = <0x0 0x45000>;
+			attr = <0x1>;
+			imp_def_attr = <0x2>;
+		};
+
+		TEE_RAM_RW {
+			str = "TEE_RAM_RW";
+			base = <0x0 0x6045000>;
+			size = <0x0 0x1b9000>;
+			attr = <0x2>;
+			imp_def_attr = <0x4>;
+		};
+
+		TA_RAM {
+			str = "TA_RAM";
+			base = <0x0 0x6200000>;
+			size = <0x0 0x1e00000>;
+			attr = <0x2>;
+			imp_def_attr = <0x7>;
+		};
+
+		RAM_SEC {
+			str = "RAM_SEC";
+			base = <0x0 0xff000000>;
+			size = <0x0 0x1000000>;
+			attr = <0x2>;
+			imp_def_attr = <0xc>;
+		};
+
+		IO_SEC0 {
+			str = "IO_SEC";
+			base = <0x0 0x2f000000>;
+			size = <0x0 0x200000>;
+			attr = <0x0>;
+			imp_def_attr = <0xe>;
+		};
+
+		IO_SEC1 {
+			str = "IO_SEC";
+			base = <0x0 0x1c000000>;
+			size = <0x0 0x200000>;
+			attr = <0x0>;
+			imp_def_attr = <0xe>;
+		};
+
+		IO_SEC2 {
+			str = "IO_SEC";
+			base = <0x0 0x2c000000>;
+			size = <0x0 0x200000>;
+			attr = <0x0>;
+			imp_def_attr = <0xe>;
+		};
+
+		NSEC_SHM {
+			str = "NSEC_SHM";
+			base = <0x0 0x83000000>;
+			size = <0x0 0x200000>;
+			attr = <0x6>;
+			imp_def_attr = <0x8>;
+		};
+	};
+
+	notifications {
+
+		notification_0 {
+			attr = <0x0>;
+			pe = <0x0>;
+		};
+	};
+};

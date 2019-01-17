@@ -262,6 +262,47 @@ static spci_buf_t *spci_msg_buf_ptr_get(unsigned int buf_type,
 	}
 }
 
+/*
+ * Complete an SPCI_RUN call in response to a blocking SPCI_MSG_RECV or
+ * SPCI_MSG_SEND_RECV from a SP
+ */
+static int spci_run_end(uint32_t comp_reason, uint16_t msg_target)
+{
+	int32_t ret;
+	sp_context_t *ctx = spm_cpu_get_sp_ctx(plat_my_core_pos());
+
+	switch (comp_reason) {
+	case SPCI_RUN_COMP_REASON_DONE_MSG:
+
+		/* Prepare the return status */
+		ret = comp_reason << SPCI_RUN_COMP_REASON_SHIFT;
+		ret |= (msg_target & SPCI_RUN_MSG_TARGET_MASK) <<
+			SPCI_RUN_MSG_TARGET_SHIFT;
+
+		/* Flag Secure Partition as idle. */
+		assert(ctx->state == SP_STATE_BUSY);
+		sp_state_set(ctx, SP_STATE_IDLE);
+
+		/* Save secure state */
+		cm_el1_sysregs_context_save(SECURE);
+
+		/* Restore non-secure state */
+		cm_el1_sysregs_context_restore(NON_SECURE);
+		cm_set_next_eret_context(NON_SECURE);
+
+		SMC_RET4(cm_get_context(NON_SECURE), ret, 0, 0, 0);
+	default:
+		/*
+		 * TODO: At the moment, the OP-TEE SP will only issue
+		 * SPCI_MESG_SEND_RECV.
+		 */
+		ERROR("Invalid completion reason (%u) \n", comp_reason);
+		panic();
+	}
+
+	return ret;
+}
+
 /* Schedule a SP in response to an SPCI_RUN from Normal world */
 static int spci_run_start(uint32_t target_info, uint64_t x7)
 {
@@ -502,6 +543,22 @@ uint64_t spm_smc_handler(uint32_t smc_fid, uint64_t x1, uint64_t x2,
 	case SPCI_MSG_SEND:
 		ret = spci_msg_send(x1, ns, SMC_GET_GP(handle, CTX_GPREG_X7),
 				    &msg_target);
+
+		SMC_RET1(handle, ret);
+
+	case SPCI_MSG_SEND_RECV:
+		if (ns)
+			break;
+		ret = spci_msg_send(x1, ns, SMC_GET_GP(handle, CTX_GPREG_X7),
+				    &msg_target);
+
+		/*
+		 * If the message was sent successfully then tell the Normal
+		 * world scheduler that a scheduling decision must be made.
+		 */
+		if (ret == SPCI_SUCCESS)
+			return spci_run_end(SPCI_RUN_COMP_REASON_DONE_MSG,
+					    msg_target);
 
 		SMC_RET1(handle, ret);
 

@@ -97,3 +97,133 @@ int dt_add_psci_cpu_enable_methods(void *fdt)
 	}
 	return 0;
 }
+
+static int add_dt_path_subnode(void *fdt, const char *path, const char *subnode)
+{
+	int offs;
+
+	offs = fdt_path_offset(fdt, path);
+	if (offs < 0)
+		return -1;
+	offs = fdt_add_subnode(fdt, offs, subnode);
+	if (offs < 0)
+		return -1;
+	return offs;
+}
+
+static void set_dt_val(void *data, uint32_t cell_size, uint64_t val)
+{
+	if (cell_size == 1) {
+		fdt32_t v = cpu_to_fdt32((uint32_t)val);
+
+		memcpy(data, &v, sizeof(v));
+	} else {
+		fdt64_t v = cpu_to_fdt64(val);
+
+		memcpy(data, &v, sizeof(v));
+	}
+}
+
+int dt_add_reserved_memory_node(void *fdt, const char *name, unsigned long pa,
+				unsigned long size)
+{
+	int offs = 0;
+	int ret = 0;
+	int addr_size = -1;
+	int len_size = -1;
+	bool found = true;
+	char subnode_name[80] = { 0 };
+	uint32_t data[FDT_MAX_NCELLS * 2] = { 0 };
+
+	offs = fdt_path_offset(fdt, "/reserved-memory");
+
+	if (offs < 0) {
+		found = false;
+		offs = 0;
+	}
+
+	len_size = fdt_size_cells(fdt, offs);
+	if (len_size < 0)
+		return -1;
+	addr_size = fdt_address_cells(fdt, offs);
+	if (addr_size < 0)
+		return -1;
+
+	if (!found) {
+		offs = add_dt_path_subnode(fdt, "/", "reserved-memory");
+		if (offs < 0)
+			return -1;
+		ret = fdt_setprop_cell(fdt, offs, "#address-cells", addr_size);
+		if (ret < 0)
+			return -1;
+		ret = fdt_setprop_cell(fdt, offs, "#size-cells", len_size);
+		if (ret < 0)
+			return -1;
+		ret = fdt_setprop(fdt, offs, "ranges", NULL, 0);
+		if (ret < 0)
+			return -1;
+	}
+
+	snprintf(subnode_name, sizeof(subnode_name), "%s", name);
+	offs = fdt_add_subnode(fdt, offs, subnode_name);
+	if (offs < 0)
+		return -1;
+
+	set_dt_val(data, addr_size, pa);
+	set_dt_val(data + addr_size, len_size, size);
+	ret = fdt_setprop(fdt, offs, "reg", data,
+			  sizeof(uint32_t) * (addr_size + len_size));
+	if (ret < 0)
+		return -1;
+	ret = fdt_setprop(fdt, offs, "no-map", NULL, 0);
+	if (ret < 0)
+		return -1;
+
+	return 0;
+}
+
+int dt_add_optee_node(void *fdt)
+{
+	int offs;
+	int ret;
+
+	if (fdt_path_offset(fdt, "/firmware/optee") >= 0)
+		return 0;
+
+	offs = fdt_path_offset(fdt, "/firmware");
+	if (offs < 0) {
+		offs = add_dt_path_subnode(fdt, "/", "firmware");
+		if (offs < 0)
+			return -1;
+	}
+
+	offs = fdt_add_subnode(fdt, offs, "optee");
+	if (offs < 0)
+		return -1;
+
+	ret = fdt_setprop_string(fdt, offs, "compatible", "linaro,optee-spci");
+	if (ret < 0)
+		return -1;
+	ret = fdt_setprop_string(fdt, offs, "method", "spci");
+	if (ret < 0)
+		return -1;
+	return 0;
+}
+
+int dt_add_spci_node(void *fdt)
+{
+	int offs;
+	int ret;
+
+	if (fdt_path_offset(fdt, "/spci") >= 0)
+		return 0;
+
+	offs = add_dt_path_subnode(fdt, "/", "spci");
+	if (offs < 0)
+		return -1;
+
+	ret = fdt_setprop_string(fdt, offs, "compatible", "arm,spci-alpha2");
+	if (ret < 0)
+		return -1;
+	return 0;
+}

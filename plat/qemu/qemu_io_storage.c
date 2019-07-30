@@ -26,6 +26,7 @@
 #define BL32_EXTRA1_IMAGE_NAME		"bl32_extra1.bin"
 #define BL32_EXTRA2_IMAGE_NAME		"bl32_extra2.bin"
 #define BL33_IMAGE_NAME			"bl33.bin"
+#define TOS_FW_CONFIG_NAME		"tos_fw_config.dtb"
 
 #if TRUSTED_BOARD_BOOT
 #define TRUSTED_BOOT_FW_CERT_NAME	"tb_fw.crt"
@@ -76,6 +77,12 @@ static const io_uuid_spec_t bl32_extra2_uuid_spec = {
 static const io_uuid_spec_t bl33_uuid_spec = {
 	.uuid = UUID_NON_TRUSTED_FIRMWARE_BL33,
 };
+
+#if ENABLE_SPCI_ALPHA2
+static const io_uuid_spec_t tos_fw_config_uuid_spec = {
+	.uuid = UUID_TOS_FW_CONFIG,
+};
+#endif
 
 #if TRUSTED_BOARD_BOOT
 static const io_uuid_spec_t tb_fw_cert_uuid_spec = {
@@ -136,6 +143,12 @@ static const io_file_spec_t sh_file_spec[] = {
 		.path = BL33_IMAGE_NAME,
 		.mode = FOPEN_MODE_RB
 	},
+#if ENABLE_SPCI_ALPHA2
+	[TOS_FW_CONFIG_ID] = {
+		.path = TOS_FW_CONFIG_NAME,
+		.mode = FOPEN_MODE_RB
+	},
+#endif
 #if TRUSTED_BOARD_BOOT
 	[TRUSTED_BOOT_FW_CERT_ID] = {
 		.path = TRUSTED_BOOT_FW_CERT_NAME,
@@ -220,6 +233,14 @@ static const struct plat_io_policy policies[] = {
 		(uintptr_t)&bl33_uuid_spec,
 		open_fip
 	},
+#if ENABLE_SPCI_ALPHA2
+	[TOS_FW_CONFIG_ID] = {
+		&fip_dev_handle,
+		(uintptr_t)&tos_fw_config_uuid_spec,
+		open_fip
+	},
+#endif
+
 #if TRUSTED_BOARD_BOOT
 	[TRUSTED_BOOT_FW_CERT_ID] = {
 		&fip_dev_handle,

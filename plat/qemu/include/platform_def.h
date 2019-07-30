@@ -10,6 +10,7 @@
 #include <arch.h>
 #include <common/tbbr/tbbr_img_def.h>
 #include <lib/utils_def.h>
+#include <lib/xlat_tables/xlat_tables_defs.h>
 #include <plat/common/common_def.h>
 
 /* Special value used to verify platform parameters from BL2 to BL3-1 */
@@ -133,7 +134,7 @@
  * Put BL3-1 at the top of the Trusted SRAM. BL31_BASE is calculated using the
  * current BL3-1 debug size plus a little space for growth.
  */
-#define BL31_BASE			(BL31_LIMIT - 0x20000)
+#define BL31_BASE			(BL31_LIMIT - 0x30000)
 #define BL31_LIMIT			(BL_RAM_BASE + BL_RAM_SIZE)
 #define BL31_PROGBITS_LIMIT		BL1_RW_BASE
 
@@ -169,7 +170,7 @@
 
 #define PLAT_PHY_ADDR_SPACE_SIZE	(1ULL << 32)
 #define PLAT_VIRT_ADDR_SPACE_SIZE	(1ULL << 32)
-#define MAX_MMAP_REGIONS		10
+#define MAX_MMAP_REGIONS		15
 #define MAX_XLAT_TABLES			6
 #define MAX_IO_DEVICES			3
 #define MAX_IO_HANDLES			4
@@ -229,5 +230,44 @@
  * System counter
  */
 #define SYS_COUNTER_FREQ_IN_TICKS	((1000 * 1000 * 1000) / 16)
+
+#if ENABLE_SPCI_ALPHA2
+/*
+ * Reserve 4 MiB for binaries of Secure Partitions and Resource Description
+ * blobs.
+ */
+#define PLAT_SP_PACKAGE_BASE	BL32_BASE
+#define PLAT_SP_PACKAGE_SIZE	ULL(0x400000)
+
+/*
+ * The rest of the memory reserved for BL32 is free for SPM to use it as memory
+ * pool to allocate memory regions requested in the resource description.
+ */
+#define PLAT_SPM_HEAP_BASE	(PLAT_SP_PACKAGE_BASE + PLAT_SP_PACKAGE_SIZE)
+#define PLAT_SPM_HEAP_SIZE	(BL32_LIMIT - BL32_BASE - PLAT_SP_PACKAGE_SIZE)
+
+#define PLAT_SPM_MEM_REGIONS_MAX	U(80)
+#define PLAT_SPM_NOTIFICATIONS_MAX	U(30)
+#define PLAT_SPM_SERVICES_MAX		U(30)
+
+#define PLAT_SPCI_HANDLES_MAX_NUM	U(20)
+#define PLAT_SPM_RESPONSES_MAX		U(30)
+
+#define PLAT_SP_IMAGE_MMAP_REGIONS	30
+#define PLAT_SP_IMAGE_MAX_XLAT_TABLES	10
+#define PLAT_SPM_MAX_PARTITIONS		U(1)
+#define PLAT_SPM_MAX_CLIENTS		U(1)
+#define PLAT_XLAT_TABLES_DYNAMIC	1
+
+/* Just after CFG_SHMEM_START + CFG_SHMEM_SIZE in OP-TEE */
+#define SPCI_MSG_BUFS_NSEC_START	ULL(0x42300000)
+#define SPCI_MSG_BUFS_NSEC_SIZE		(PLAT_SPM_MAX_PARTITIONS * 2 * \
+					 PAGE_SIZE)
+#define SPCI_MSG_BUFS_NSEC_END		(SPCI_MSG_BUFS_NSEC_START +	\
+					 SPCI_MSG_BUFS_NSEC_SIZE)
+
+#define QEMU_TOS_FW_CONFIG_LOAD_ADDR	(SHARED_RAM_BASE + SHARED_RAM_SIZE)
+#define QEMU_TOS_FW_CONFIG_LOAD_SIZE	0x1000
+#endif
 
 #endif /* PLATFORM_DEF_H */

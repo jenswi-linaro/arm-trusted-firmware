@@ -53,14 +53,14 @@ static bl_mem_params_node_t bl2_mem_params_descs[] = {
 	  .image_info.image_base = BL31_BASE,
 	  .image_info.image_max_size = BL31_LIMIT - BL31_BASE,
 
-# ifdef QEMU_LOAD_BL32
+# ifdef BL32_BASE
 	  .next_handoff_image_id = BL32_IMAGE_ID,
 # else
 	  .next_handoff_image_id = BL33_IMAGE_ID,
 # endif
 	},
 #endif /* AARCH64 */
-# ifdef QEMU_LOAD_BL32
+# ifdef BL32_BASE
 
 #ifdef AARCH64
 #define BL32_EP_ATTRIBS		(SECURE | EXECUTABLE)
@@ -122,7 +122,21 @@ static bl_mem_params_node_t bl2_mem_params_descs[] = {
 #endif
 	   .next_handoff_image_id = INVALID_IMAGE_ID,
 	},
-# endif /* QEMU_LOAD_BL32 */
+
+#if ENABLE_SPCI_ALPHA2
+	/* Fill TOS_FW_CONFIG related information */
+    {
+	    .image_id = TOS_FW_CONFIG_ID,
+	    SET_STATIC_PARAM_HEAD(ep_info, PARAM_IMAGE_BINARY,
+		    VERSION_2, entry_point_info_t, SECURE | NON_EXECUTABLE),
+	    SET_STATIC_PARAM_HEAD(image_info, PARAM_IMAGE_BINARY,
+		    VERSION_2, image_info_t, IMAGE_ATTRIB_SKIP_LOADING),
+	   .image_info.image_base = QEMU_TOS_FW_CONFIG_LOAD_ADDR,
+	   .image_info.image_max_size = QEMU_TOS_FW_CONFIG_LOAD_SIZE,
+	   .next_handoff_image_id = INVALID_IMAGE_ID,
+    },
+#endif
+# endif /* BL32_BASE */
 
 	/* Fill BL33 related information */
 	{ .image_id = BL33_IMAGE_ID,

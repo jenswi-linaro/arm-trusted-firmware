@@ -19,15 +19,14 @@ endif # ARMv7
 ifeq (${SPD},opteed)
 add-lib-optee 		:= 	yes
 endif
+ifeq (${ENABLE_SPM},1)
+add-lib-optee 		:= 	yes
+endif
 ifeq ($(AARCH32_SP),optee)
 add-lib-optee 		:= 	yes
 endif
 
 include lib/libfdt/libfdt.mk
-
-ifeq ($(NEED_BL32),yes)
-$(eval $(call add_define,QEMU_LOAD_BL32))
-endif
 
 PLAT_PATH               :=      plat/qemu/
 PLAT_INCLUDES		:=	-Iinclude/plat/arm/common/		\
@@ -138,6 +137,10 @@ BL31_SOURCES		+=	lib/cpus/aarch64/aem_generic.S		\
 				plat/qemu/topology.c			\
 				plat/qemu/aarch64/plat_helpers.S	\
 				plat/qemu/qemu_bl31_setup.c
+ifeq (${ENABLE_SPM},1)
+BL31_SOURCES		+=	common/fdt_wrappers.c			\
+				plat/common/plat_spm_rd.c
+endif
 endif
 
 # Add the build options to pack Trusted OS Extra1 and Trusted OS Extra2 images

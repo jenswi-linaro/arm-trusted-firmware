@@ -30,5 +30,10 @@ bl_load_info_t *plat_get_bl_image_load_info(void)
  ******************************************************************************/
 bl_params_t *plat_get_next_bl_params(void)
 {
-	return get_next_bl_params_from_mem_params_desc();
+	bl_params_t *next_bl_params = get_next_bl_params_from_mem_params_desc();
+
+#if ENABLE_SPCI_ALPHA2
+	populate_next_bl_params_config(next_bl_params);
+#endif
+	return next_bl_params;
 }

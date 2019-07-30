@@ -68,6 +68,30 @@ static void update_dt(void)
 		return;
 	}
 
+#if ENABLE_SPCI_ALPHA2
+	if (dt_add_reserved_memory_node(fdt, "spci_msg_buf",
+					SPCI_MSG_BUFS_NSEC_START,
+					SPCI_MSG_BUFS_NSEC_SIZE)) {
+		ERROR("Failed to reserve SPCI message buffer in Device Tree\n");
+		return;
+	}
+
+	/* XXX */
+	if (dt_add_reserved_memory_node(fdt, "optee_shm",
+					0x42000000, 0x00200000)) {
+		ERROR("Failed to reserve OP-TEE SHM buffer in Device Tree\n");
+		return;
+	}
+	if (dt_add_optee_node(fdt)) {
+		ERROR("Failed to add OP-TEE node in Device Tree\n");
+		return;
+	}
+	if (dt_add_spci_node(fdt)) {
+		ERROR("Failed to add SPCI node in Device Tree\n");
+		return;
+	}
+#endif
+
 	ret = fdt_pack(fdt);
 	if (ret < 0)
 		ERROR("Failed to pack Device Tree at %p: error %d\n", fdt, ret);
@@ -143,16 +167,19 @@ static int qemu_bl2_handle_post_image_load(unsigned int image_id)
 {
 	int err = 0;
 	bl_mem_params_node_t *bl_mem_params = get_bl_mem_params_node(image_id);
-#if defined(SPD_opteed) || defined(AARCH32_SP_OPTEE)
+#if defined(SPD_opteed) || defined(AARCH32_SP_OPTEE) || ENABLE_SPCI_ALPHA2
 	bl_mem_params_node_t *pager_mem_params = NULL;
 	bl_mem_params_node_t *paged_mem_params = NULL;
+#endif
+#if ENABLE_SPCI_ALPHA2
+	bl_mem_params_node_t *rd_params = NULL;
 #endif
 
 	assert(bl_mem_params);
 
 	switch (image_id) {
 	case BL32_IMAGE_ID:
-#if defined(SPD_opteed) || defined(AARCH32_SP_OPTEE)
+#if defined(SPD_opteed) || defined(AARCH32_SP_OPTEE) || ENABLE_SPCI_ALPHA2
 		pager_mem_params = get_bl_mem_params_node(BL32_EXTRA1_IMAGE_ID);
 		assert(pager_mem_params);
 
@@ -166,7 +193,14 @@ static int qemu_bl2_handle_post_image_load(unsigned int image_id)
 			WARN("OPTEE header parse error.\n");
 		}
 
-#if defined(SPD_opteed)
+#if ENABLE_SPCI_ALPHA2
+		rd_params = get_bl_mem_params_node(TOS_FW_CONFIG_ID);
+		if (rd_params)
+			rd_params->image_info.h.attr &=
+				~IMAGE_ATTRIB_SKIP_LOADING;
+#endif
+
+#if defined(SPD_opteed) || ENABLE_SPCI_ALPHA2
 		/*
 		 * OP-TEE expect to receive DTB address in x2.
 		 * This will be copied into x2 by dispatcher.

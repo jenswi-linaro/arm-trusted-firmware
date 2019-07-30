@@ -30,6 +30,10 @@ unsigned int plat_qemu_calc_core_pos(u_register_t mpidr);
 
 int dt_add_psci_node(void *fdt);
 int dt_add_psci_cpu_enable_methods(void *fdt);
+int dt_add_reserved_memory_node(void *fdt, const char *name, unsigned long pa,
+				unsigned long sz);
+int dt_add_optee_node(void *fdt);
+int dt_add_spci_node(void *fdt);
 
 void qemu_console_init(void);
 

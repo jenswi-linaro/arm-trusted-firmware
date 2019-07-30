@@ -98,6 +98,32 @@ static const mmap_region_t plat_qemu_mmap[] = {
 };
 #endif
 
+static void add_maps(unsigned long total_base, unsigned long total_size,
+		     unsigned long code_start, unsigned long code_limit,
+		     unsigned long ro_start, unsigned long ro_limit,
+		     unsigned long coh_start, unsigned long coh_limit)
+{
+	mmap_add_region(total_base, total_base, total_size,
+			MT_MEMORY | MT_RW | MT_SECURE);
+	mmap_add_region(code_start, code_start, code_limit - code_start,
+			MT_CODE | MT_SECURE);
+	mmap_add_region(ro_start, ro_start, ro_limit - ro_start,
+			MT_RO_DATA | MT_SECURE);
+	mmap_add_region(coh_start, coh_start, coh_limit - coh_start,
+			MT_DEVICE | MT_RW | MT_SECURE);
+	mmap_add(plat_qemu_mmap);
+#if defined(IMAGE_BL31) && ENABLE_SPCI_ALPHA2
+	mmap_add_region(SPCI_MSG_BUFS_SEC_START, SPCI_MSG_BUFS_SEC_START,
+			SPCI_MSG_BUFS_SEC_END - SPCI_MSG_BUFS_SEC_START,
+			MT_MEMORY | MT_RW | MT_SECURE);
+	mmap_add_region(SPCI_MSG_BUFS_NSEC_START, SPCI_MSG_BUFS_NSEC_START,
+			SPCI_MSG_BUFS_NSEC_END - SPCI_MSG_BUFS_NSEC_START,
+			MT_MEMORY | MT_RW | MT_NS);
+#endif
+	init_xlat_tables();
+}
+
+
 /*******************************************************************************
  * Macro generating the code for the function setting up the pagetables as per
  * the platform memory map & initialize the mmu, for the given exception level
@@ -113,20 +139,8 @@ static const mmap_region_t plat_qemu_mmap[] = {
 				   unsigned long coh_start,		\
 				   unsigned long coh_limit)		\
 	{								\
-		mmap_add_region(total_base, total_base,			\
-				total_size,				\
-				MT_MEMORY | MT_RW | MT_SECURE);		\
-		mmap_add_region(code_start, code_start,			\
-				code_limit - code_start,		\
-				MT_CODE | MT_SECURE);			\
-		mmap_add_region(ro_start, ro_start,			\
-				ro_limit - ro_start,			\
-				MT_RO_DATA | MT_SECURE);		\
-		mmap_add_region(coh_start, coh_start,			\
-				coh_limit - coh_start,			\
-				MT_DEVICE | MT_RW | MT_SECURE);		\
-		mmap_add(plat_qemu_mmap);				\
-		init_xlat_tables();					\
+		add_maps(total_base, total_size, code_start, code_limit,\
+			 ro_start, ro_limit, coh_start, coh_limit);	\
 									\
 		enable_mmu_##_el(0);					\
 	}
@@ -138,5 +152,3 @@ DEFINE_CONFIGURE_MMU_EL(svc_mon)
 DEFINE_CONFIGURE_MMU_EL(el1)
 DEFINE_CONFIGURE_MMU_EL(el3)
 #endif
-
-

@@ -22,15 +22,14 @@ endif # ARMv7
 ifeq (${SPD},opteed)
 add-lib-optee 		:= 	yes
 endif
+ifeq (${ENABLE_SPMD},1)
+add-lib-optee 		:= 	yes
+endif
 ifeq ($(AARCH32_SP),optee)
 add-lib-optee 		:= 	yes
 endif
 
 include lib/libfdt/libfdt.mk
-
-ifeq ($(NEED_BL32),yes)
-$(eval $(call add_define,QEMU_LOAD_BL32))
-endif
 
 PLAT_QEMU_PATH               :=      plat/qemu/qemu
 PLAT_QEMU_COMMON_PATH        :=      plat/qemu/common
@@ -157,6 +156,15 @@ BL31_SOURCES		+=	lib/cpus/aarch64/aem_generic.S		\
 				${PLAT_QEMU_COMMON_PATH}/aarch64/plat_helpers.S	\
 				${PLAT_QEMU_COMMON_PATH}/qemu_bl31_setup.c		\
 				${QEMU_GIC_SOURCES}
+ifeq (${ENABLE_SPMD},1)
+BL31_SOURCES		+=	common/fdt_wrappers.c			\
+				plat/common/plat_spmd_manifest.c
+FDT_SOURCES		+=	plat/qemu/qemu/qemu_spmc_manifest.dts
+QEMU_TOS_FW_CONFIG	:=	${BUILD_PLAT}/fdts/qemu_spmc_manifest.dtb
+
+# Add the TOS_FW_CONFIG to FIP and specify the same to certtool
+$(eval $(call TOOL_ADD_PAYLOAD,${QEMU_TOS_FW_CONFIG},--tos-fw-config))
+endif
 endif
 
 # Add the build options to pack Trusted OS Extra1 and Trusted OS Extra2 images

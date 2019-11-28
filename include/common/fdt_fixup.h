@@ -11,5 +11,7 @@ int dt_add_psci_node(void *fdt);
 int dt_add_psci_cpu_enable_methods(void *fdt);
 int fdt_add_reserved_memory(void *dtb, const char *node_name,
 			    uintptr_t base, size_t size);
+int dt_add_optee_node(void *fdt);
+int dt_add_spci_node(void *fdt);
 
 #endif /* FDT_FIXUP_H */

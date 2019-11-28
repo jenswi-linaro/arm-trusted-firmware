@@ -207,3 +207,64 @@ int fdt_add_reserved_memory(void *dtb, const char *node_name,
 
 	return 0;
 }
+
+static int add_dt_path_subnode(void *fdt, const char *path, const char *subnode)
+{
+	int offs;
+
+	offs = fdt_path_offset(fdt, path);
+	if (offs < 0)
+		return -1;
+	offs = fdt_add_subnode(fdt, offs, subnode);
+	if (offs < 0)
+		return -1;
+	return offs;
+}
+
+int dt_add_optee_node(void *fdt)
+{
+	int offs;
+	int ret;
+
+	if (fdt_path_offset(fdt, "/firmware/optee") >= 0)
+		return 0;
+
+	offs = fdt_path_offset(fdt, "/firmware");
+	if (offs < 0) {
+		offs = add_dt_path_subnode(fdt, "/", "firmware");
+		if (offs < 0)
+			return -1;
+	}
+
+	offs = fdt_add_subnode(fdt, offs, "optee");
+	if (offs < 0)
+		return -1;
+
+	ret = fdt_setprop_string(fdt, offs, "compatible", "linaro,optee-tz");
+	if (ret < 0)
+		return -1;
+	ret = fdt_setprop_string(fdt, offs, "method", "spci");
+	if (ret < 0)
+		return -1;
+	return 0;
+}
+
+int dt_add_spci_node(void *fdt)
+{
+	int offs;
+	int ret;
+
+	if (fdt_path_offset(fdt, "/spci") >= 0)
+		return 0;
+
+	offs = add_dt_path_subnode(fdt, "/", "spci");
+	if (offs < 0)
+		return -1;
+
+	ret = fdt_setprop_string(fdt, offs, "compatible", "arm,spci");
+	ret = fdt_setprop_string(fdt, offs, "conduit", "smc");
+	if (ret < 0)
+		return -1;
+	return 0;
+}
+

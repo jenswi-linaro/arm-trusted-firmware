@@ -69,6 +69,21 @@ static void update_dt(void)
 		return;
 	}
 
+#if ENABLE_SPMD
+	if (fdt_add_reserved_memory(fdt, "optee_shm", 0x42000000, 0x00200000)) {
+		ERROR("Failed to reserve OP-TEE SHM buffer in Device Tree\n");
+		return;
+	}
+	if (dt_add_optee_node(fdt)) {
+		ERROR("Failed to add OP-TEE node in Device Tree\n");
+		return;
+	}
+	if (dt_add_spci_node(fdt)) {
+		ERROR("Failed to add SPCI node in Device Tree\n");
+		return;
+	}
+#endif
+
 	ret = fdt_pack(fdt);
 	if (ret < 0)
 		ERROR("Failed to pack Device Tree at %p: error %d\n", fdt, ret);
@@ -144,7 +159,7 @@ static int qemu_bl2_handle_post_image_load(unsigned int image_id)
 {
 	int err = 0;
 	bl_mem_params_node_t *bl_mem_params = get_bl_mem_params_node(image_id);
-#if defined(SPD_opteed) || defined(AARCH32_SP_OPTEE)
+#if defined(SPD_opteed) || defined(AARCH32_SP_OPTEE) || defined(BL32_BASE)
 	bl_mem_params_node_t *pager_mem_params = NULL;
 	bl_mem_params_node_t *paged_mem_params = NULL;
 #endif
@@ -153,7 +168,7 @@ static int qemu_bl2_handle_post_image_load(unsigned int image_id)
 
 	switch (image_id) {
 	case BL32_IMAGE_ID:
-#if defined(SPD_opteed) || defined(AARCH32_SP_OPTEE)
+#if defined(SPD_opteed) || defined(AARCH32_SP_OPTEE) || defined(BL32_BASE)
 		pager_mem_params = get_bl_mem_params_node(BL32_EXTRA1_IMAGE_ID);
 		assert(pager_mem_params);
 
@@ -167,7 +182,14 @@ static int qemu_bl2_handle_post_image_load(unsigned int image_id)
 			WARN("OPTEE header parse error.\n");
 		}
 
-#if defined(SPD_opteed)
+#if ENABLE_SPMD
+		/*
+		 * spmd_setup() expects to find the SPM core manifest base
+		 * and size in arg0 and arg2 respectively.
+		 */
+		bl_mem_params->ep_info.args.arg0 = QEMU_TOS_FW_CONFIG_LOAD_ADDR;
+		bl_mem_params->ep_info.args.arg2 = QEMU_TOS_FW_CONFIG_LOAD_SIZE;
+#elif defined(SPD_opteed)
 		/*
 		 * OP-TEE expect to receive DTB address in x2.
 		 * This will be copied into x2 by dispatcher.

@@ -159,6 +159,12 @@ int32_t spmd_setup(void)
 	rd_base = (void *) spmc_ep_info->args.arg0;
 	rd_size = spmc_ep_info->args.arg2;
 
+	/* Move down arguments 4-7 to position 0-3 */
+	memcpy(&spmc_ep_info->args.arg0, &spmc_ep_info->args.arg4,
+	       sizeof(spmc_ep_info->args.arg0) * 4);
+	memset(&spmc_ep_info->args.arg4, 0,
+	       sizeof(spmc_ep_info->args.arg4) * 4);
+
 	rd_base_align = page_align((uintptr_t) rd_base, DOWN);
 	rd_size_align = page_align((uintptr_t) rd_size, UP);
 
@@ -357,7 +363,7 @@ uint64_t spmd_smc_handler(uint32_t smc_fid, uint64_t x1, uint64_t x2,
 		 */
 		ret = MAKE_SPCI_VERSION(spmc_attrs.major_version,
 					spmc_attrs.minor_version);
-		SMC_RET8(handle, SPCI_SUCCESS, SPCI_TARGET_INFO_MBZ, ret,
+		SMC_RET8(handle, ret, SPCI_PARAM_MBZ, SPCI_PARAM_MBZ,
 			 SPCI_PARAM_MBZ, SPCI_PARAM_MBZ, SPCI_PARAM_MBZ,
 			 SPCI_PARAM_MBZ, SPCI_PARAM_MBZ);
 

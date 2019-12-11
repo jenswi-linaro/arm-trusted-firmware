@@ -189,6 +189,10 @@ static int qemu_bl2_handle_post_image_load(unsigned int image_id)
 		 */
 		bl_mem_params->ep_info.args.arg0 = QEMU_TOS_FW_CONFIG_LOAD_ADDR;
 		bl_mem_params->ep_info.args.arg2 = QEMU_TOS_FW_CONFIG_LOAD_SIZE;
+		bl_mem_params->ep_info.args.arg4 = 0;
+		bl_mem_params->ep_info.args.arg5 = 0;
+		bl_mem_params->ep_info.args.arg6 = PLAT_QEMU_DT_BASE;
+		bl_mem_params->ep_info.args.arg7 = 0;
 #elif defined(SPD_opteed)
 		/*
 		 * OP-TEE expect to receive DTB address in x2.

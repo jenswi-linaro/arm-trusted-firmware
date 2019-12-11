@@ -159,6 +159,12 @@ int32_t spmd_setup(void)
 	rd_base = (void *) spmc_ep_info->args.arg0;
 	rd_size = spmc_ep_info->args.arg2;
 
+	/* Move down arguments 4-7 to position 0-3 */
+	memcpy(&spmc_ep_info->args.arg0, &spmc_ep_info->args.arg4,
+	       sizeof(spmc_ep_info->args.arg0) * 4);
+	memset(&spmc_ep_info->args.arg4, 0,
+	       sizeof(spmc_ep_info->args.arg4) * 4);
+
 	rd_base_align = page_align((uintptr_t) rd_base, DOWN);
 	rd_size_align = page_align((uintptr_t) rd_size, UP);
 

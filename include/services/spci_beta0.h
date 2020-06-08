@@ -84,6 +84,10 @@
 #define SPCI_MEM_SHARE_SMC64		U(0xC4000073)
 #define SPCI_MEM_RETRIEVE_REQ_SMC64	U(0xC4000074)
 
+#define FFA_MEM_FRAG_RX_32                        0x8400007A
+#define FFA_MEM_FRAG_TX_32                        0x8400007B
+
+
 /* Number of SPCI calls (above) implemented */
 #define SPCI_NUM_CALLS			U(24)
 

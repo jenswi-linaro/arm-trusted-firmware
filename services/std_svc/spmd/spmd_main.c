@@ -462,6 +462,8 @@ uint64_t spmd_smc_handler(uint32_t smc_fid, uint64_t x1, uint64_t x2,
 	case SPCI_MEM_RETRIEVE_RESP:
 	case SPCI_MEM_RELINQUISH:
 	case SPCI_MEM_RECLAIM:
+	case FFA_MEM_FRAG_RX_32:
+	case FFA_MEM_FRAG_TX_32:
 	case SPCI_SUCCESS:
 		/*
 		 * TODO: Assume that no requests originate from EL3 at the

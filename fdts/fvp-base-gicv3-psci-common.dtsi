@@ -227,4 +227,12 @@
 			bpp		= <16>;
 		};
 	};
+	ffa {
+		compatible = "arm,ffa-1.0";
+		conduit = "smc";
+		optee {
+		  compatible = "arm,ffa-1.0-partition";
+		  uuid = "486178e0-e7f8-11e3-bc5e-0002a5d5c51b";
+		};
+	};
 };

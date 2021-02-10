@@ -8,7 +8,7 @@
 
 /dts-v1/;
 
-#define	AFF
+#define	AFF 00
 
 #include "fvp-defs.dtsi"
 #include "fvp-base-gicv3-psci-common.dtsi"

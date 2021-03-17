@@ -76,7 +76,7 @@
 		compatible = "arm,sp";
 #ifdef OPTEE_SP_FW_CONFIG
 		op-tee {
-			uuid = <0x486178e0 0xe7f811e3 0xbc5e0002 0xa5d5c51b>;
+			uuid = <0xe0786148 0xe311f8e7 0x02005ebc 0x1bc5d5a5>;
 			load-address = <0x6280000>;
 		};
 #else

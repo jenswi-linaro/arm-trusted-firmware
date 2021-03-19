@@ -54,11 +54,11 @@ func el2_sysregs_context_save
 	stp	x11, x12, [x0, #CTX_AFSR1_EL2]
 
 	mrs	x13, cnthctl_el2
-	mrs	x14, cnthp_ctl_el2
+#	mrs	x14, cnthp_ctl_el2
 	stp	x13, x14, [x0, #CTX_CNTHCTL_EL2]
 
-	mrs	x15, cnthp_cval_el2
-	mrs	x16, cnthp_tval_el2
+#	mrs	x15, cnthp_cval_el2
+#	mrs	x16, cnthp_tval_el2
 	stp	x15, x16, [x0, #CTX_CNTHP_CVAL_EL2]
 
 	mrs	x17, cntvoff_el2
@@ -173,23 +173,23 @@ func el2_sysregs_context_save
 #endif
 
 #if ARM_ARCH_AT_LEAST(8, 4)
-	mrs	x9, cnthps_ctl_el2
-	mrs	x10, cnthps_cval_el2
+#	mrs	x9, cnthps_ctl_el2
+#	mrs	x10, cnthps_cval_el2
 	stp	x9, x10, [x0, #CTX_CNTHPS_CTL_EL2]
 
-	mrs	x11, cnthps_tval_el2
-	mrs	x12, cnthvs_ctl_el2
+#	mrs	x11, cnthps_tval_el2
+#	mrs	x12, cnthvs_ctl_el2
 	stp	x11, x12, [x0, #CTX_CNTHPS_TVAL_EL2]
 
-	mrs	x13, cnthvs_cval_el2
-	mrs	x14, cnthvs_tval_el2
+#	mrs	x13, cnthvs_cval_el2
+#	mrs	x14, cnthvs_tval_el2
 	stp	x13, x14, [x0, #CTX_CNTHVS_CVAL_EL2]
 
-	mrs	x15, cnthv_ctl_el2
-	mrs	x16, cnthv_cval_el2
+#	mrs	x15, cnthv_ctl_el2
+#	mrs	x16, cnthv_cval_el2
 	stp	x15, x16, [x0, #CTX_CNTHV_CTL_EL2]
 
-	mrs	x17, cnthv_tval_el2
+#	mrs	x17, cnthv_tval_el2
 	mrs	x9, contextidr_el2
 	stp	x17, x9, [x0, #CTX_CNTHV_TVAL_EL2]
 
@@ -257,11 +257,11 @@ func el2_sysregs_context_restore
 
 	ldp	x13, x14, [x0, #CTX_CNTHCTL_EL2]
 	msr	cnthctl_el2, x13
-	msr	cnthp_ctl_el2, x14
+#	msr	cnthp_ctl_el2, x14
 
 	ldp	x15, x16, [x0, #CTX_CNTHP_CVAL_EL2]
-	msr	cnthp_cval_el2, x15
-	msr	cnthp_tval_el2, x16
+#	msr	cnthp_cval_el2, x15
+#	msr	cnthp_tval_el2, x16
 
 	ldp	x17, x9, [x0, #CTX_CNTVOFF_EL2]
 	msr	cntvoff_el2, x17
@@ -375,23 +375,23 @@ func el2_sysregs_context_restore
 
 #if ARM_ARCH_AT_LEAST(8, 4)
 	ldp	x10, x11, [x0, #CTX_CNTHPS_CTL_EL2]
-	msr	cnthps_ctl_el2, x10
-	msr	cnthps_cval_el2, x11
+#	msr	cnthps_ctl_el2, x10
+#	msr	cnthps_cval_el2, x11
 
 	ldp	x12, x13, [x0, #CTX_CNTHPS_TVAL_EL2]
-	msr	cnthps_tval_el2, x12
-	msr	cnthvs_ctl_el2, x13
+#	msr	cnthps_tval_el2, x12
+#	msr	cnthvs_ctl_el2, x13
 
 	ldp	x14, x15, [x0, #CTX_CNTHVS_CVAL_EL2]
-	msr	cnthvs_cval_el2, x14
-	msr	cnthvs_tval_el2, x15
+#	msr	cnthvs_cval_el2, x14
+#	msr	cnthvs_tval_el2, x15
 
 	ldp	x16, x17, [x0, #CTX_CNTHV_CTL_EL2]
-	msr	cnthv_ctl_el2, x16
-	msr	cnthv_cval_el2, x17
+#	msr	cnthv_ctl_el2, x16
+#	msr	cnthv_cval_el2, x17
 
 	ldp	x9, x10, [x0, #CTX_CNTHV_TVAL_EL2]
-	msr	cnthv_tval_el2, x9
+#	msr	cnthv_tval_el2, x9
 	msr	contextidr_el2, x10
 
 #if CTX_INCLUDE_AARCH32_REGS

@@ -55,7 +55,6 @@
 
 #define	POST				\
 	enable-method = "psci";		\
-	cpu-idle-states = <&CPU_SLEEP_0 &CLUSTER_SLEEP_0>;	\
 	next-level-cache = <&L2_0>;	\
 	};
 
